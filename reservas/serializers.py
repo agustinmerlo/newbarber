@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
+# reservas/serializers.py
 from rest_framework import serializers
+from caja.models import TurnoCaja
 from .models import Reserva
 
 
@@ -45,7 +47,16 @@ class ReservaSerializer(serializers.ModelSerializer):
             'fecha_confirmacion',
             'notas_admin',
         ]
-        read_only_fields = ['id', 'fecha_creacion', 'fecha_confirmacion', 'barbero_username', 'barbero_email', 'pendiente', 'resto_a_pagar']
+        read_only_fields = [
+            'id',
+            'fecha_creacion',
+            'fecha_confirmacion',
+            'barbero_username',
+            'barbero_email',
+            'pendiente',
+            'resto_a_pagar',
+            'estado_pago'
+        ]
 
     def get_pendiente(self, obj):
         return obj.pendiente
@@ -53,12 +64,44 @@ class ReservaSerializer(serializers.ModelSerializer):
     def get_resto_a_pagar(self, obj):
         return obj.resto_a_pagar
 
+    def validate_saldo_pagado(self, value):
+        """
+        Validar que el saldo pagado no exceda el total
+        """
+        if self.instance:
+            seña = self.instance.seña or 0
+            total = self.instance.total or 0
+            
+            if (seña + value) > total:
+                raise serializers.ValidationError(
+                    f"El saldo pagado (${value}) + la seña (${seña}) "
+                    f"no puede exceder el total (${total})"
+                )
+        
+        return value
+
+    def validate(self, data):
+        """
+        Validaciones generales
+        """
+        if 'saldo_pagado' in data and self.instance:
+            nuevo_saldo = data['saldo_pagado']
+            saldo_anterior = self.instance.saldo_pagado or 0
+            
+            if nuevo_saldo > saldo_anterior:
+                turno_activo = TurnoCaja.objects.filter(estado='abierto').first()
+                
+                if not turno_activo:
+                    raise serializers.ValidationError({
+                        'caja': 'No se pueden registrar pagos. La caja está cerrada. Por favor, abre la caja primero.'
+                    })
+        
+        return data
+
     def update(self, instance, validated_data):
-        # Actualizar todos los campos recibidos
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         
-        # El método save() del modelo ya calcula el estado_pago automáticamente
         instance.save()
         return instance
 

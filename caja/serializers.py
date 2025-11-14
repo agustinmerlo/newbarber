@@ -71,6 +71,11 @@ class MovimientoCajaSerializer(serializers.ModelSerializer):
     usuario_registro_nombre = serializers.SerializerMethodField()
     barbero_nombre = serializers.SerializerMethodField()
     
+    # ✅ NUEVOS CAMPOS PARA INFO DE RESERVA
+    cliente_nombre = serializers.SerializerMethodField()
+    cliente_telefono = serializers.SerializerMethodField()
+    reserva_id = serializers.SerializerMethodField()
+    
     class Meta:
         model = MovimientoCaja
         fields = [
@@ -88,6 +93,9 @@ class MovimientoCajaSerializer(serializers.ModelSerializer):
             'barbero',
             'barbero_nombre',
             'reserva',
+            'reserva_id',
+            'cliente_nombre',
+            'cliente_telefono',
             'usuario_registro',
             'usuario_registro_nombre',
             'comprobante',
@@ -112,6 +120,22 @@ class MovimientoCajaSerializer(serializers.ModelSerializer):
     def get_barbero_nombre(self, obj):
         if obj.barbero:
             return obj.barbero.get_full_name() or obj.barbero.username
+        return None
+    
+    # ✅ NUEVOS MÉTODOS PARA INFO DE RESERVA
+    def get_cliente_nombre(self, obj):
+        if obj.reserva:
+            return f"{obj.reserva.nombre_cliente} {obj.reserva.apellido_cliente}"
+        return None
+    
+    def get_cliente_telefono(self, obj):
+        if obj.reserva:
+            return obj.reserva.telefono_cliente
+        return None
+    
+    def get_reserva_id(self, obj):
+        if obj.reserva:
+            return obj.reserva.id
         return None
     
     def validate_monto(self, value):

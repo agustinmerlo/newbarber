@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# reservas/views.py
+
 import json
 import sys
 from datetime import datetime, time, timedelta
@@ -17,12 +19,14 @@ from django.utils.dateparse import parse_date
 
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.exceptions import ValidationError
 
 from .models import Reserva
 from .serializers import ReservaSerializer, ReservaCreateSerializer
-from caja.models import MovimientoCaja  # ✅ Importar al inicio
+from caja.models import MovimientoCaja, TurnoCaja
+from caja.utils import validar_caja_abierta, obtener_turno_activo, registrar_pago_en_caja
 
 
 # ==========================================
@@ -75,12 +79,11 @@ def _dt(fecha, hora):
     if isinstance(hora, str):
         hora = datetime.strptime(hora, "%H:%M").time()
     naive = datetime.combine(fecha, hora)
-    # Asumimos timezone local del proyecto
     return timezone.make_aware(naive, timezone.get_current_timezone())
 
 
 # ==========================================
-# HORARIOS DISPONIBLES (LEE RESERVAS REALES)
+# HORARIOS DISPONIBLES
 # ==========================================
 @api_view(['GET'])
 @permission_classes([AllowAny])
@@ -153,12 +156,15 @@ def horarios_disponibles(request):
 
 
 # ==========================================
-# CREAR NUEVA RESERVA (desde el frontend)
+# CREAR NUEVA RESERVA
 # ==========================================
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def crear_reserva(request):
-    """POST /api/reservas/crear/"""
+    """
+    POST /api/reservas/crear/
+    Crea una nueva reserva con seña (NO requiere caja abierta en este momento)
+    """
     try:
         reserva_raw = request.data.get('reserva')
         cliente_raw = request.data.get('cliente')
@@ -207,6 +213,7 @@ def crear_reserva(request):
         inicio_dt = datetime.combine(fecha_res, hora_inicio)
         fin_dt = inicio_dt + timedelta(minutes=duracion)
 
+        # Validar disponibilidad
         ocupadas = (
             Reserva.objects
             .filter(barbero_id=reserva_data['barbero']['id'], fecha=fecha_res)
@@ -221,6 +228,7 @@ def crear_reserva(request):
                     'error': f'El horario {hora_inicio_str} ya está ocupado. Por favor selecciona otro horario.'
                 }, status=400)
 
+        # Crear reserva
         reserva = Reserva.objects.create(
             nombre_cliente=cliente_data.get('nombre', ''),
             apellido_cliente=cliente_data.get('apellido', ''),
@@ -235,9 +243,11 @@ def crear_reserva(request):
             seña=monto_decimal,
             duracion_total=int(reserva_data.get('duracionTotal', 0)),
             comprobante=comprobante,
-            estado='pendiente'
+            estado='pendiente',
+            estado_pago='sin_pagar'
         )
 
+        # Enviar email de confirmación
         mensaje = f'''Hola {cliente_data.get("nombre", "")},
 
 Gracias por elegirnos! Hemos recibido tu comprobante de pago.
@@ -264,7 +274,7 @@ Barberia Clase V'''
         return Response({
             'id': reserva.id,
             'estado': 'pendiente',
-            'mensaje': 'Reserva creada exitosamente',
+            'mensaje': 'Reserva creada exitosamente. La seña se registrará en caja al confirmar.',
             'data': serializer.data
         }, status=201)
 
@@ -276,20 +286,371 @@ Barberia Clase V'''
 
 
 # ==========================================
-# LISTAR RESERVAS DEL CLIENTE (para el panel del cliente)
+# CONFIRMAR RESERVA
+# ==========================================
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def confirmar_reserva(request, reserva_id):
+    """
+    POST /api/reservas/<id>/confirmar/
+    Confirma la reserva y registra la seña en caja
+    """
+    try:
+        reserva = Reserva.objects.get(id=reserva_id)
+        
+        # 🔒 VALIDAR CAJA ABIERTA
+        try:
+            turno_activo = validar_caja_abierta()
+        except ValidationError as e:
+            error_detail = e.detail if hasattr(e, 'detail') else str(e)
+            print(f"❌ Intento de confirmar reserva #{reserva_id} con caja cerrada")
+            return Response(error_detail, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validar que no esté ya confirmada
+        if reserva.estado == 'confirmada':
+            return Response({
+                'error': 'Reserva ya confirmada',
+                'mensaje': 'Esta reserva ya fue confirmada anteriormente.',
+                'estado_actual': reserva.estado
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Actualizar estado
+        reserva.estado = 'confirmada'
+        reserva.fecha_confirmacion = timezone.now()
+        reserva.save()
+
+        # 💰 REGISTRAR SEÑA EN CAJA
+        if reserva.seña and reserva.seña > 0:
+            try:
+                movimiento = registrar_pago_en_caja(
+                    reserva=reserva,
+                    monto=reserva.seña,
+                    metodo_pago='transferencia',
+                    tipo_pago='seña',
+                    usuario=request.user if request.user.is_authenticated else None
+                )
+                print(f"✅ Seña de ${reserva.seña} registrada en caja (Movimiento #{movimiento.id})")
+            except Exception as e:
+                print(f"❌ Error al registrar seña en caja: {e}")
+                # Revertir confirmación si falla el registro en caja
+                reserva.estado = 'pendiente'
+                reserva.fecha_confirmacion = None
+                reserva.save()
+                return Response({
+                    'error': 'Error al registrar en caja',
+                    'mensaje': f'No se pudo registrar la seña en caja: {str(e)}',
+                    'sugerencia': 'Verifica que la caja esté abierta e intenta nuevamente.'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # Enviar email de confirmación
+        mensaje_cliente = f'''Hola {reserva.nombre_cliente},
+
+EXCELENTES NOTICIAS! Tu reserva ha sido CONFIRMADA.
+
+DETALLES DE TU CITA:
+- Fecha: {reserva.fecha.strftime("%d/%m/%Y")}
+- Hora: {reserva.horario.strftime("%H:%M")}
+- Barbero: {reserva.barbero_nombre}
+
+PAGO:
+- Total: ${reserva.total}
+- Sena pagada: ${reserva.seña}
+- Resto a pagar: ${reserva.resto_a_pagar}
+
+Te esperamos!
+Barberia Clase V'''
+
+        enviar_email_utf8(
+            'Reserva Confirmada - Barberia Clase V',
+            mensaje_cliente,
+            reserva.email_cliente
+        )
+
+        serializer = ReservaSerializer(reserva)
+        return Response({
+            'success': True,
+            'mensaje': 'Reserva confirmada y seña registrada en caja exitosamente', 
+            'data': serializer.data
+        }, status=200)
+        
+    except Reserva.DoesNotExist:
+        return Response({
+            'error': 'Reserva no encontrada',
+            'mensaje': f'No existe una reserva con el ID {reserva_id}'
+        }, status=404)
+    except Exception as e:
+        print(f"❌ Error inesperado: {e}")
+        import traceback
+        traceback.print_exc()
+        return Response({
+            'error': 'Error del servidor',
+            'mensaje': str(e)
+        }, status=500)
+
+
+# ==========================================
+# RECHAZAR RESERVA
+# ==========================================
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def rechazar_reserva(request, reserva_id):
+    """
+    POST /api/reservas/<id>/rechazar/
+    """
+    try:
+        reserva = Reserva.objects.get(id=reserva_id)
+        motivo = request.data.get('motivo', 'Comprobante invalido')
+        reserva.estado = 'rechazada'
+        reserva.notas_admin = motivo
+        reserva.save()
+
+        mensaje = f'''Hola {reserva.nombre_cliente},
+
+No pudimos verificar tu comprobante.
+
+MOTIVO: {motivo}
+
+Contactanos para resolverlo.
+
+Barberia Clase V'''
+
+        enviar_email_utf8(
+            'Problema con tu Reserva - Barberia Clase V',
+            mensaje,
+            reserva.email_cliente
+        )
+
+        serializer = ReservaSerializer(reserva)
+        return Response({'mensaje': 'Reserva rechazada', 'data': serializer.data}, status=200)
+    except Reserva.DoesNotExist:
+        return Response({'error': 'Reserva no encontrada'}, status=404)
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
+
+
+# ==========================================
+# PAGAR SALDO
+# ==========================================
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def pagar_saldo(request, reserva_id):
+    """
+    POST /api/reservas/{id}/pagar_saldo/
+    Registra el pago del saldo restante de una reserva
+    
+    Body:
+    {
+        "monto": 5000,
+        "metodo_pago": "efectivo"
+    }
+    """
+    try:
+        reserva = Reserva.objects.get(id=reserva_id)
+    except Reserva.DoesNotExist:
+        return Response({
+            'error': 'Reserva no encontrada',
+            'mensaje': f'No existe una reserva con el ID {reserva_id}'
+        }, status=status.HTTP_404_NOT_FOUND)
+    
+    # 🔒 VALIDAR CAJA ABIERTA
+    try:
+        turno_activo = validar_caja_abierta()
+    except ValidationError as e:
+        error_detail = e.detail if hasattr(e, 'detail') else str(e)
+        print(f"❌ Intento de pagar saldo con caja cerrada - Reserva #{reserva.id}")
+        return Response(error_detail, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Validar que no esté completamente pagada
+    if reserva.esta_completamente_pagado:
+        return Response({
+            'error': 'Reserva ya pagada',
+            'mensaje': 'Esta reserva ya está completamente pagada',
+            'total': float(reserva.total),
+            'pagado': float(reserva.seña + reserva.saldo_pagado),
+            'pendiente': 0
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Obtener datos
+    monto = request.data.get('monto')
+    metodo_pago = request.data.get('metodo_pago', 'efectivo')
+    
+    if not monto:
+        return Response({
+            'error': 'Monto requerido',
+            'mensaje': 'Debes proporcionar el monto del pago',
+            'pendiente_actual': float(reserva.pendiente)
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        monto = Decimal(str(monto))
+        if monto <= 0:
+            return Response({
+                'error': 'Monto inválido',
+                'mensaje': 'El monto debe ser mayor a 0'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validar que no pague más de lo que debe
+        if monto > Decimal(str(reserva.pendiente)):
+            return Response({
+                'error': 'Monto excedido',
+                'mensaje': f'El monto no puede ser mayor al pendiente',
+                'monto_recibido': float(monto),
+                'pendiente': float(reserva.pendiente),
+                'diferencia': float(monto - Decimal(str(reserva.pendiente)))
+            }, status=status.HTTP_400_BAD_REQUEST)
+    except (ValueError, TypeError):
+        return Response({
+            'error': 'Formato inválido',
+            'mensaje': 'El monto debe ser un número válido'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Actualizar reserva
+    reserva.saldo_pagado = (reserva.saldo_pagado or Decimal('0')) + monto
+    reserva.metodo_pago = metodo_pago
+    reserva.fecha_pago = timezone.now()
+    reserva.save()
+    
+    # 💰 REGISTRAR EN CAJA
+    try:
+        movimiento = registrar_pago_en_caja(
+            reserva=reserva,
+            monto=monto,
+            metodo_pago=metodo_pago,
+            tipo_pago='saldo',
+            usuario=request.user if request.user.is_authenticated else None
+        )
+        print(f"✅ Pago de saldo ${monto} registrado en caja (Movimiento #{movimiento.id})")
+    except Exception as e:
+        print(f"❌ Error al registrar pago en caja: {e}")
+        # Revertir el pago si falla el registro
+        reserva.saldo_pagado = (reserva.saldo_pagado or Decimal('0')) - monto
+        reserva.save()
+        return Response({
+            'error': 'Error al registrar en caja',
+            'mensaje': f'No se pudo registrar el pago en caja: {str(e)}',
+            'sugerencia': 'Verifica que la caja esté abierta e intenta nuevamente.'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    serializer = ReservaSerializer(reserva)
+    return Response({
+        'success': True,
+        'mensaje': 'Pago registrado exitosamente',
+        'reserva': serializer.data,
+        'pago_registrado': float(monto),
+        'saldo_restante': float(reserva.pendiente),
+        'movimiento_id': movimiento.id
+    }, status=status.HTTP_200_OK)
+
+
+# ==========================================
+# VERIFICAR CAJA
+# ==========================================
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def verificar_caja(request):
+    """
+    GET /api/reservas/verificar_caja/
+    Verifica si hay una caja abierta
+    """
+    turno_activo = obtener_turno_activo()
+    
+    return Response({
+        'caja_abierta': turno_activo is not None,
+        'turno_id': turno_activo.id if turno_activo else None,
+        'mensaje': 'Caja abierta' if turno_activo else 'Caja cerrada'
+    }, status=status.HTTP_200_OK)
+
+
+# ==========================================
+# ACTUALIZAR RESERVA
+# ==========================================
+@api_view(['GET', 'PATCH', 'PUT'])
+@permission_classes([AllowAny])
+def actualizar_reserva(request, reserva_id):
+    """
+    GET /api/reservas/<id>/     → Obtener detalles
+    PATCH /api/reservas/<id>/   → Actualizar campos específicos
+    PUT /api/reservas/<id>/     → Actualizar todos los campos
+    """
+    try:
+        reserva = Reserva.objects.get(id=reserva_id)
+    except Reserva.DoesNotExist:
+        return Response({'error': 'Reserva no encontrada'}, status=404)
+
+    if request.method == 'GET':
+        serializer = ReservaSerializer(reserva)
+        return Response(serializer.data, status=200)
+
+    print(f"📥 Datos recibidos para actualizar: {request.data}")
+    
+    # Guardar valores anteriores
+    saldo_pagado_anterior = reserva.saldo_pagado or Decimal('0')
+    
+    serializer = ReservaSerializer(
+        reserva, 
+        data=request.data, 
+        partial=(request.method == 'PATCH')
+    )
+    
+    if serializer.is_valid():
+        reserva_actualizada = serializer.save()
+        
+        print(f"✅ Reserva actualizada:")
+        print(f"   - Total: {reserva_actualizada.total}")
+        print(f"   - Seña: {reserva_actualizada.seña}")
+        print(f"   - Saldo pagado: {reserva_actualizada.saldo_pagado}")
+        print(f"   - Pendiente: {reserva_actualizada.pendiente}")
+        print(f"   - Estado pago: {reserva_actualizada.estado_pago}")
+        
+        # Calcular diferencia de pago
+        saldo_pagado_nuevo = reserva_actualizada.saldo_pagado or Decimal('0')
+        diferencia_pago = saldo_pagado_nuevo - saldo_pagado_anterior
+        
+        # 💰 SI HAY NUEVO PAGO, REGISTRAR EN CAJA
+        if diferencia_pago > 0:
+            try:
+                # Validar que haya caja abierta
+                turno_activo = validar_caja_abierta()
+                
+                metodo_pago = request.data.get('metodo_pago', 'efectivo')
+                
+                movimiento = registrar_pago_en_caja(
+                    reserva=reserva_actualizada,
+                    monto=diferencia_pago,
+                    metodo_pago=metodo_pago,
+                    tipo_pago='saldo',
+                    usuario=request.user if request.user.is_authenticated else None
+                )
+                print(f"✅ Saldo de ${diferencia_pago} registrado en caja (Movimiento #{movimiento.id})")
+            except ValidationError as e:
+                # Si la caja está cerrada, devolver error
+                error_detail = e.detail if hasattr(e, 'detail') else str(e)
+                return Response(error_detail, status=status.HTTP_400_BAD_REQUEST)
+            except Exception as e:
+                print(f"❌ Error al registrar saldo en caja: {e}")
+        
+        response_serializer = ReservaSerializer(reserva_actualizada)
+        return Response({
+            'mensaje': 'Reserva actualizada exitosamente',
+            'data': response_serializer.data
+        }, status=200)
+    
+    print(f"❌ Errores de validación: {serializer.errors}")
+    return Response(serializer.errors, status=400)
+
+
+# ==========================================
+# LISTAR RESERVAS DEL CLIENTE
 # ==========================================
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def listar_reservas_cliente(request):
     """
     GET /api/reservas/cliente/?estado=...&email=...
-    Si el usuario está autenticado y tiene email, lo usamos por defecto.
-    Estados válidos: pendiente | confirmada | rechazada | cancelada | proximas
     """
     estado = (request.query_params.get('estado') or '').strip().lower()
     email = (request.query_params.get('email') or '').strip().lower()
 
-    # Si está autenticado, priorizamos su email
     if request.user and request.user.is_authenticated and getattr(request.user, 'email', None):
         email = request.user.email.lower()
 
@@ -298,13 +659,10 @@ def listar_reservas_cliente(request):
 
     qs = Reserva.objects.filter(email_cliente__iexact=email)
 
-    # Filtro por estado
     if estado in ['pendiente', 'confirmada', 'rechazada', 'cancelada']:
         qs = qs.filter(estado=estado)
     elif estado == 'proximas':
-        # futuras y no canceladas/rechazadas
         ahora = timezone.localtime()
-        # Combinar fecha+horario para comparar
         ids_future = []
         for r in qs.exclude(estado__in=['cancelada', 'rechazada']):
             dt = _dt(r.fecha, r.horario)
@@ -325,7 +683,6 @@ def listar_reservas_cliente(request):
 def reservas_cliente_contadores(request):
     """
     GET /api/reservas/cliente/contadores/?email=...
-    Devuelve: proximas, pendientes, confirmadas, rechazadas, canceladas
     """
     email = (request.query_params.get('email') or '').strip().lower()
     if request.user and request.user.is_authenticated and getattr(request.user, 'email', None):
@@ -359,11 +716,15 @@ def reservas_cliente_contadores(request):
 
 
 # ==========================================
-# LISTAR RESERVAS (ADMIN - CON FILTROS)
+# LISTAR RESERVAS (ADMIN)
 # ==========================================
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def listar_reservas(request):
+    """
+    GET /api/reservas/
+    Lista todas las reservas con filtros opcionales
+    """
     estado = request.query_params.get('estado', None)
     email  = request.query_params.get('email', None)
     qs = Reserva.objects.all()
@@ -371,273 +732,70 @@ def listar_reservas(request):
         qs = qs.filter(estado=estado)
     if email:
         qs = qs.filter(email_cliente__iexact=email)
+    qs = qs.order_by('-fecha_creacion')
     serializer = ReservaSerializer(qs, many=True)
     return Response(serializer.data, status=200)
-
+# ==========================================
+# CONTINUACIÓN DE reservas/views.py
+# ==========================================
 
 # ==========================================
-# OBTENER/ACTUALIZAR RESERVA (GET/PATCH/PUT)
+# CONTADORES PARA EL PANEL DEL CLIENTE (CONTINUACIÓN)
 # ==========================================
-@api_view(['GET', 'PATCH', 'PUT'])
+@api_view(['GET'])
 @permission_classes([AllowAny])
-def actualizar_reserva(request, reserva_id):
+def reservas_cliente_contadores(request):
     """
-    GET /api/reservas/<id>/     → Obtener detalles de la reserva
-    PATCH /api/reservas/<id>/   → Actualizar campos específicos (seña, saldo_pagado, etc.)
-    PUT /api/reservas/<id>/     → Actualizar todos los campos
-    
-    ⚠️ IMPORTANTE: Si se actualiza el saldo_pagado, se registra automáticamente en caja
+    GET /api/reservas/cliente/contadores/?email=...
     """
-    try:
-        reserva = Reserva.objects.get(id=reserva_id)
-    except Reserva.DoesNotExist:
-        return Response({'error': 'Reserva no encontrada'}, status=404)
+    email = (request.query_params.get('email') or '').strip().lower()
+    if request.user and request.user.is_authenticated and getattr(request.user, 'email', None):
+        email = request.user.email.lower()
 
-    # Si es GET, solo devolver los datos
-    if request.method == 'GET':
-        serializer = ReservaSerializer(reserva)
-        return Response(serializer.data, status=200)
+    if not email:
+        return Response({'error': 'Se requiere el parámetro email o sesión autenticada con email'}, status=400)
 
-    # Si es PATCH o PUT, actualizar
-    print(f"📥 Datos recibidos para actualizar: {request.data}")
-    
-    # Guardar saldo_pagado anterior para comparar
-    saldo_pagado_anterior = reserva.saldo_pagado or Decimal('0')
-    
-    serializer = ReservaSerializer(
-        reserva, 
-        data=request.data, 
-        partial=(request.method == 'PATCH')
-    )
-    
-    if serializer.is_valid():
-        reserva_actualizada = serializer.save()
-        
-        print(f"✅ Reserva actualizada:")
-        print(f"   - Total: {reserva_actualizada.total}")
-        print(f"   - Seña: {reserva_actualizada.seña}")
-        print(f"   - Saldo pagado: {reserva_actualizada.saldo_pagado}")
-        print(f"   - Pendiente: {reserva_actualizada.pendiente}")
-        print(f"   - Estado pago: {reserva_actualizada.estado_pago}")
-        
-        # ✅ REGISTRAR SALDO PAGADO EN CAJA (si cambió)
-        saldo_pagado_nuevo = reserva_actualizada.saldo_pagado or Decimal('0')
-        diferencia_pago = saldo_pagado_nuevo - saldo_pagado_anterior
-        
-        if diferencia_pago > 0:
-            try:
-                # Crear descripción de servicios
-                servicios_nombres = ', '.join([
-                    s.get('nombre', '') for s in reserva_actualizada.servicios[:3]
-                ]) if reserva_actualizada.servicios else 'Servicios varios'
-                
-                # Obtener método de pago (viene en request.data)
-                metodo_pago = request.data.get('metodo_pago', 'efectivo')
-                
-                # Crear movimiento de ingreso por saldo pagado
-                MovimientoCaja.objects.create(
-                    tipo='ingreso',
-                    monto=diferencia_pago,
-                    descripcion=f'Pago saldo reserva #{reserva_actualizada.id} - {reserva_actualizada.nombre_cliente} {reserva_actualizada.apellido_cliente} - {servicios_nombres}',
-                    metodo_pago=metodo_pago,
-                    categoria='servicios',
-                    barbero=reserva_actualizada.barbero,
-                    reserva=reserva_actualizada,
-                    usuario_registro=request.user if request.user.is_authenticated else None,
-                )
-                print(f"✅ Saldo de ${diferencia_pago} registrado en caja para reserva #{reserva_actualizada.id}")
-                print(f"   - Método de pago: {metodo_pago}")
-            except Exception as e:
-                print(f"❌ Error al registrar saldo en caja: {e}")
-                import traceback
-                traceback.print_exc()
-                # No fallar la actualización si falla el registro en caja
-        
-        response_serializer = ReservaSerializer(reserva_actualizada)
-        return Response({
-            'mensaje': 'Reserva actualizada exitosamente',
-            'data': response_serializer.data
-        }, status=200)
-    
-    print(f"❌ Errores de validación: {serializer.errors}")
-    return Response(serializer.errors, status=400)
+    base = Reserva.objects.filter(email_cliente__iexact=email)
+    ahora = timezone.localtime()
+
+    pendientes   = base.filter(estado='pendiente').count()
+    confirmadas  = base.filter(estado='confirmada').count()
+    rechazadas   = base.filter(estado='rechazada').count()
+    canceladas   = base.filter(estado='cancelada').count()
+
+    ids_future = []
+    for r in base.exclude(estado__in=['cancelada', 'rechazada']):
+        dt = _dt(r.fecha, r.horario)
+        if dt >= ahora:
+            ids_future.append(r.id)
+    proximas = base.filter(id__in=ids_future).count()
+
+    return Response({
+        "proximas": proximas,
+        "pendientes": pendientes,
+        "confirmadas": confirmadas,
+        "rechazadas": rechazadas,
+        "canceladas": canceladas,
+    }, status=200)
 
 
 # ==========================================
-# CONFIRMAR RESERVA Y REGISTRAR EN CAJA
+# LISTAR RESERVAS (ADMIN)
 # ==========================================
-@api_view(['POST'])
+@api_view(['GET'])
 @permission_classes([AllowAny])
-def confirmar_reserva(request, reserva_id):
+def listar_reservas(request):
     """
-    POST /api/reservas/<id>/confirmar/
-    Confirma la reserva y registra la seña automáticamente en caja
+    GET /api/reservas/
+    Lista todas las reservas con filtros opcionales
     """
-    try:
-        reserva = Reserva.objects.get(id=reserva_id)
-        
-        # ✅ 1. Cambiar estado de la reserva
-        reserva.estado = 'confirmada'
-        reserva.fecha_confirmacion = timezone.now()
-        reserva.save()
-
-        # ✅ 2. REGISTRAR LA SEÑA EN LA CAJA (solo si hay seña > 0)
-        if reserva.seña and reserva.seña > 0:
-            try:
-                # Crear descripción de servicios
-                servicios_nombres = ', '.join([
-                    s.get('nombre', '') for s in reserva.servicios[:3]
-                ]) if reserva.servicios else 'Servicios varios'
-                
-                # Crear movimiento de ingreso por seña
-                MovimientoCaja.objects.create(
-                    tipo='ingreso',
-                    monto=reserva.seña,
-                    descripcion=f'Seña reserva #{reserva.id} - {reserva.nombre_cliente} {reserva.apellido_cliente} - {servicios_nombres}',
-                    metodo_pago='transferencia',  # ya que pagó con comprobante
-                    categoria='servicios',
-                    barbero=reserva.barbero,
-                    reserva=reserva,
-                    usuario_registro=request.user if request.user.is_authenticated else None,
-                    comprobante=reserva.comprobante
-                )
-                print(f"✅ Seña de ${reserva.seña} registrada en caja para reserva #{reserva.id}")
-            except Exception as e:
-                print(f"❌ Error al registrar seña en caja: {e}")
-                import traceback
-                traceback.print_exc()
-                # No fallar la confirmación si falla el registro en caja
-
-        # ✅ 3. Enviar email al cliente
-        mensaje_cliente = f'''Hola {reserva.nombre_cliente},
-
-EXCELENTES NOTICIAS! Tu reserva ha sido CONFIRMADA.
-
-DETALLES DE TU CITA:
-- Fecha: {reserva.fecha.strftime("%d/%m/%Y")}
-- Hora: {reserva.horario.strftime("%H:%M")}
-- Barbero: {reserva.barbero_nombre}
-- Duracion estimada: {reserva.duracion_total} minutos
-
-INFORMACION DE PAGO:
-- Total del servicio: ${reserva.total}
-- Sena pagada: ${reserva.seña}
-- Resto a pagar (en efectivo): ${reserva.resto_a_pagar}
-
-Te esperamos!
-Si necesitas reprogramar o cancelar, escribenos por WhatsApp.
-
-Saludos,
-Equipo Barberia Clase V'''
-
-        enviar_email_utf8(
-            'Reserva Confirmada - Barberia Clase V',
-            mensaje_cliente,
-            reserva.email_cliente
-        )
-
-        # ✅ 4. Enviar email al barbero
-        if reserva.barbero and reserva.barbero.email:
-            servicios_texto = "\n".join([
-                f"  - {s.get('nombre', 'Servicio')} (${s.get('precio', 0)})"
-                for s in reserva.servicios
-            ]) if reserva.servicios else "  - Sin detalles"
-
-            mensaje_barbero = f'''Hola {reserva.barbero.username},
-
-Tienes una NUEVA RESERVA CONFIRMADA!
-
-DETALLES DE LA CITA:
-- Cliente: {reserva.nombre_cliente} {reserva.apellido_cliente}
-- Fecha: {reserva.fecha.strftime("%d/%m/%Y")}
-- Hora: {reserva.horario.strftime("%H:%M")}
-- Duracion: {reserva.duracion_total} minutos
-
-SERVICIOS SOLICITADOS:
-{servicios_texto}
-
-CONTACTO DEL CLIENTE:
-- Telefono: {reserva.telefono_cliente}
-- Email: {reserva.email_cliente}
-
-PAGO:
-- Total: ${reserva.total}
-- Sena recibida: ${reserva.seña}
-- A cobrar en efectivo: ${reserva.resto_a_pagar}
-
-⚠️ IMPORTANTE: La seña de ${reserva.seña} ya fue registrada en caja.
-Solo debes cobrar ${reserva.resto_a_pagar} en efectivo al finalizar el servicio.
-
-Puedes ver todos los detalles en tu panel de barbero.
-
-Saludos,
-Equipo Barberia Clase V'''
-
-            enviar_email_utf8(
-                f'Nueva Reserva Confirmada - {reserva.fecha.strftime("%d/%m/%Y")}',
-                mensaje_barbero,
-                reserva.barbero.email
-            )
-
-        serializer = ReservaSerializer(reserva)
-        return Response({
-            'mensaje': 'Reserva confirmada y seña registrada en caja exitosamente', 
-            'data': serializer.data
-        }, status=200)
-        
-    except Reserva.DoesNotExist:
-        return Response({'error': 'Reserva no encontrada'}, status=404)
-    except Exception as e:
-        print(f"❌ Error al confirmar reserva: {e}")
-        import traceback
-        traceback.print_exc()
-        return Response({'error': f'Error al confirmar reserva: {str(e)}'}, status=500)
-
-
-# ==========================================
-# RECHAZAR RESERVA
-# ==========================================
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def rechazar_reserva(request, reserva_id):
-    """
-    POST /api/reservas/<id>/rechazar/
-    Rechaza la reserva y notifica al cliente
-    """
-    try:
-        reserva = Reserva.objects.get(id=reserva_id)
-        motivo = request.data.get('motivo', 'Comprobante de pago invalido')
-        reserva.estado = 'rechazada'
-        reserva.notas_admin = motivo
-        reserva.save()
-
-        mensaje = f'''Hola {reserva.nombre_cliente},
-
-Lamentablemente no hemos podido verificar tu comprobante de pago.
-
-MOTIVO:
-{motivo}
-
-DETALLES DE LA RESERVA:
-- Reserva #: {reserva.id}
-- Fecha solicitada: {reserva.fecha}
-- Hora: {reserva.horario}
-
-Contactanos para resolverlo. Queremos ayudarte!
-
-Saludos,
-Equipo Barberia Clase V'''
-
-        enviar_email_utf8(
-            'Problema con tu Reserva - Barberia Clase V',
-            mensaje,
-            reserva.email_cliente
-        )
-
-        serializer = ReservaSerializer(reserva)
-        return Response({'mensaje': 'Reserva rechazada', 'data': serializer.data}, status=200)
-    except Reserva.DoesNotExist:
-        return Response({'error': 'Reserva no encontrada'}, status=404)
-    except Exception as e:
-        print(f"❌ Error al rechazar reserva: {e}")
-        return Response({'error': f'Error al rechazar reserva: {str(e)}'}, status=500)
+    estado = request.query_params.get('estado', None)
+    email  = request.query_params.get('email', None)
+    qs = Reserva.objects.all()
+    if estado:
+        qs = qs.filter(estado=estado)
+    if email:
+        qs = qs.filter(email_cliente__iexact=email)
+    qs = qs.order_by('-fecha_creacion')
+    serializer = ReservaSerializer(qs, many=True)
+    return Response(serializer.data, status=200) 
