@@ -19,7 +19,7 @@ from .serializers import (
 
 class TurnoCajaViewSet(viewsets.ModelViewSet):
     """
-    ViewSet para gestionar turnos de caja
+    ViewSet para gestionar turnos de caja con TODOS los métodos de pago
     """
     queryset = TurnoCaja.objects.all()
     serializer_class = TurnoCajaSerializer
@@ -45,9 +45,11 @@ class TurnoCajaViewSet(viewsets.ModelViewSet):
     
     def perform_create(self, serializer):
         """Crear turno asociando usuario"""
-        serializer.save(
+        turno = serializer.save(
             usuario_apertura=self.request.user if self.request.user.is_authenticated else None
         )
+        # Inicializar totales
+        turno.calcular_totales()
     
     @action(detail=False, methods=['get'])
     def turno_activo(self, request):
@@ -63,6 +65,9 @@ class TurnoCajaViewSet(viewsets.ModelViewSet):
                 'mensaje': 'No hay ningún turno abierto'
             }, status=200)
         
+        # Actualizar totales antes de devolver
+        turno_abierto.calcular_totales()
+        
         serializer = TurnoCajaSerializer(turno_abierto)
         return Response({
             'existe': True,
@@ -73,11 +78,14 @@ class TurnoCajaViewSet(viewsets.ModelViewSet):
     def cerrar(self, request, pk=None):
         """
         POST /api/caja/turnos/{id}/cerrar/
-        Cierra un turno de caja
+        Cierra un turno de caja con TODOS los métodos de pago
         
         Body esperado:
         {
-            "monto_cierre": 15000.50,
+            "monto_cierre_efectivo": 15000.50,
+            "monto_cierre_transferencia": 8000.00,
+            "monto_cierre_mercadopago": 5000.00,
+            "monto_cierre_seña": 2000.00,
             "observaciones": "Todo correcto"
         }
         """
@@ -88,31 +96,40 @@ class TurnoCajaViewSet(viewsets.ModelViewSet):
                 'error': 'Este turno ya está cerrado'
             }, status=400)
         
-        monto_cierre = request.data.get('monto_cierre')
+        # Obtener montos de cierre
+        try:
+            montos_cierre = {
+                'efectivo': Decimal(str(request.data.get('monto_cierre_efectivo', 0))),
+                'transferencia': Decimal(str(request.data.get('monto_cierre_transferencia', 0))),
+                'mercadopago': Decimal(str(request.data.get('monto_cierre_mercadopago', 0))),
+                'seña': Decimal(str(request.data.get('monto_cierre_seña', 0))),
+            }
+            
+            # Validar que sean números positivos
+            for metodo, monto in montos_cierre.items():
+                if monto < 0:
+                    return Response({
+                        'error': f'El monto de {metodo} no puede ser negativo'
+                    }, status=400)
+                    
+        except (ValueError, TypeError) as e:
+            return Response({
+                'error': 'Los montos de cierre deben ser números válidos'
+            }, status=400)
+        
         observaciones = request.data.get('observaciones', '')
         
-        if monto_cierre is None:
-            return Response({
-                'error': 'Debes proporcionar el monto_cierre'
-            }, status=400)
-        
-        try:
-            monto_cierre = Decimal(str(monto_cierre))
-            if monto_cierre < 0:
-                return Response({
-                    'error': 'El monto de cierre no puede ser negativo'
-                }, status=400)
-        except (ValueError, TypeError):
-            return Response({
-                'error': 'El monto de cierre debe ser un número válido'
-            }, status=400)
-        
         # Cerrar el turno
-        turno.cerrar_turno(
-            monto_cierre=monto_cierre,
-            observaciones=observaciones,
-            usuario=request.user if request.user.is_authenticated else None
-        )
+        try:
+            turno.cerrar_turno(
+                montos_cierre=montos_cierre,
+                observaciones=observaciones,
+                usuario=request.user if request.user.is_authenticated else None
+            )
+        except ValueError as e:
+            return Response({
+                'error': str(e)
+            }, status=400)
         
         # Marcar todos los movimientos del turno como no editables
         turno.movimientos_turno.update(es_editable=False)
@@ -127,16 +144,18 @@ class TurnoCajaViewSet(viewsets.ModelViewSet):
     def resumen(self, request, pk=None):
         """
         GET /api/caja/turnos/{id}/resumen/
-        Obtiene un resumen completo del turno con todos sus movimientos
+        Obtiene un resumen completo del turno con desglose por TODOS los métodos
         """
         turno = self.get_object()
         movimientos = turno.movimientos_turno.all()
         
-        # Calcular totales por método de pago
+        # ✅ Calcular totales por TODOS los métodos de pago
+        metodos = ['efectivo', 'tarjeta', 'transferencia', 'mercadopago', 'seña']
+        
         ingresos_por_metodo = {}
         egresos_por_metodo = {}
         
-        for metodo in ['efectivo', 'tarjeta', 'transferencia', 'mercadopago']:
+        for metodo in metodos:
             ingresos_por_metodo[metodo] = float(
                 sum(m.monto for m in movimientos.filter(
                     tipo='ingreso',
@@ -223,6 +242,8 @@ class TurnoCajaViewSet(viewsets.ModelViewSet):
         }, status=200)
 
 
+# caja/views.py - Actualiza el método get_queryset
+
 class MovimientoCajaViewSet(viewsets.ModelViewSet):
     """
     ViewSet para CRUD completo de MovimientoCaja
@@ -233,7 +254,13 @@ class MovimientoCajaViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         """Aplicar filtros desde query params"""
-        queryset = MovimientoCaja.objects.all()
+        # ✅ USAR distinct() PARA EVITAR DUPLICADOS
+        queryset = MovimientoCaja.objects.select_related(
+            'turno', 
+            'barbero', 
+            'usuario_registro',
+            'reserva'
+        ).distinct()
         
         # Filtros
         tipo = self.request.query_params.get('tipo')
@@ -259,12 +286,16 @@ class MovimientoCajaViewSet(viewsets.ModelViewSet):
         if solo_editables == 'true':
             queryset = queryset.filter(es_editable=True)
         
-        return queryset.order_by('-fecha', '-hora')
+        # ✅ ORDENAR CONSISTENTEMENTE
+        return queryset.order_by('-fecha_creacion', '-id')
     
     def perform_create(self, serializer):
         """Asociar usuario y turno activo al crear"""
         # Buscar turno activo
         turno_activo = TurnoCaja.objects.filter(estado='abierto').first()
+        
+        if not turno_activo:
+            raise ValueError("No hay un turno de caja abierto. Debes abrir la caja primero.")
         
         serializer.save(
             usuario_registro=self.request.user if self.request.user.is_authenticated else None,
@@ -297,7 +328,7 @@ class MovimientoCajaViewSet(viewsets.ModelViewSet):
     def estadisticas(self, request):
         """
         GET /api/caja/movimientos/estadisticas/
-        Devuelve estadísticas generales de la caja
+        Devuelve estadísticas generales de la caja con TODOS los métodos
         """
         fecha_desde = request.query_params.get('fecha_desde')
         fecha_hasta = request.query_params.get('fecha_hasta')
@@ -320,9 +351,11 @@ class MovimientoCajaViewSet(viewsets.ModelViewSet):
         
         saldo = total_ingresos - total_egresos
         
-        # Estadísticas por método de pago
+        # ✅ Estadísticas por TODOS los métodos de pago
+        metodos = ['efectivo', 'tarjeta', 'transferencia', 'mercadopago', 'seña']
         por_metodo = {}
-        for metodo in ['efectivo', 'tarjeta', 'transferencia', 'mercadopago']:
+        
+        for metodo in metodos:
             ingresos = movimientos.filter(
                 tipo='ingreso', 
                 metodo_pago=metodo
@@ -384,5 +417,3 @@ class CierreCajaViewSet(viewsets.ModelViewSet):
         cierre = serializer.save(
             usuario_cierre=self.request.user if self.request.user.is_authenticated else None
         )
-        # Si tienes un método calcular_totales en CierreCaja, descoméntalo:
-        # cierre.calcular_totales()

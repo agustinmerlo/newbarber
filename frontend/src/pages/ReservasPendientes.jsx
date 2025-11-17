@@ -11,19 +11,22 @@ export default function ReservasPendientes() {
   const [comprobanteSeleccionado, setComprobanteSeleccionado] = useState(null);
   const [motivoRechazo, setMotivoRechazo] = useState("");
   const [procesando, setProcesando] = useState(null);
+  
+  // Estados para control de caja
+  const [modalAperturaCaja, setModalAperturaCaja] = useState(false);
+  const [montoApertura, setMontoApertura] = useState("");
+  const [turnoActivo, setTurnoActivo] = useState(null);
+  const [reservaPendienteConfirmar, setReservaPendienteConfirmar] = useState(null);
 
   // ===== Helpers de monto/moneda =====
   const parsePrice = (v) => {
     if (typeof v === "number" && Number.isFinite(v)) return v;
     if (v == null) return 0;
     let s = String(v).trim();
-    // Dejar solo dígitos, coma, punto y signo
     s = s.replace(/[^\d.,-]/g, "");
-    // Si parece formato es-AR "1.234,56"
     if (s.includes(",") && s.lastIndexOf(",") > s.lastIndexOf(".")) {
       s = s.replace(/\./g, "").replace(",", ".");
     } else {
-      // en-US "1,234.56"
       s = s.replace(/,/g, "");
     }
     const n = parseFloat(s);
@@ -36,7 +39,6 @@ export default function ReservasPendientes() {
       maximumFractionDigits: 2,
     }).format(Number.isFinite(n) ? n : 0);
 
-  // Helper: normaliza reserva.servicios a array
   const toServiciosArray = (value) => {
     if (Array.isArray(value)) return value;
     if (value == null) return [];
@@ -51,11 +53,27 @@ export default function ReservasPendientes() {
     return [];
   };
 
-  // Cargar reservas
+  // Verificar turno activo al cargar
   useEffect(() => {
+    verificarTurnoActivo();
     cargarReservas();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtro]);
+
+  const verificarTurnoActivo = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/caja/turnos/turno_activo/`);
+      const data = await res.json();
+      if (data.existe) {
+        setTurnoActivo(data.turno);
+      } else {
+        setTurnoActivo(null);
+      }
+    } catch (err) {
+      console.error("Error verificando turno:", err);
+      setTurnoActivo(null);
+    }
+  };
 
   const cargarReservas = async () => {
     setCargando(true);
@@ -66,10 +84,8 @@ export default function ReservasPendientes() {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
 
-      // Acepta array directo o respuesta paginada {results:[...]}
       const items = Array.isArray(data) ? data : data?.results ?? [];
 
-      // Normalizar cada reserva
       const reservasNormalizadas = items.map((reserva) => ({
         ...reserva,
         servicios: toServiciosArray(reserva.servicios),
@@ -93,10 +109,8 @@ export default function ReservasPendientes() {
     }
   };
 
-  // ✅ FIX: Formatear fecha con timezone correcto
   const formatearFecha = (fecha) => {
     if (!fecha) return "-";
-    // ✅ Agregar T00:00:00 para forzar hora local
     const d = new Date(fecha.includes('T') ? fecha : `${fecha}T00:00:00`);
     if (isNaN(d.getTime())) return fecha;
     return d.toLocaleDateString("es-ES", {
@@ -110,7 +124,6 @@ export default function ReservasPendientes() {
   const formatearHora = (hora) => {
     if (!hora) return "-";
     if (typeof hora !== "string") return String(hora);
-    // "15:00:00" → "15:00"
     if (hora.includes(":")) return hora.substring(0, 5);
     return hora;
   };
@@ -135,12 +148,63 @@ export default function ReservasPendientes() {
   };
 
   const verComprobante = (reserva) => setComprobanteSeleccionado(reserva);
+  
   const cerrarModal = () => {
     setComprobanteSeleccionado(null);
     setMotivoRechazo("");
   };
 
+  // Abrir caja
+  const abrirCaja = async () => {
+    if (!montoApertura || parseFloat(montoApertura) < 0) {
+      alert("Ingresa un monto de apertura válido");
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/api/caja/turnos/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ monto_apertura: parseFloat(montoApertura) })
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const data = await res.json();
+      setTurnoActivo(data);
+      setModalAperturaCaja(false);
+      setMontoApertura("");
+      
+      alert("✅ Caja abierta exitosamente");
+      
+      // Si había una reserva pendiente, confirmarla ahora
+      if (reservaPendienteConfirmar) {
+        await confirmarReservaDirecto(reservaPendienteConfirmar);
+        setReservaPendienteConfirmar(null);
+      }
+    } catch (err) {
+      console.error("Error abriendo caja:", err);
+      alert("❌ Error al abrir la caja");
+    }
+  };
+
+  // Confirmar reserva (con verificación de caja)
   const confirmarReserva = async (reservaId) => {
+    // Verificar si hay turno activo
+    await verificarTurnoActivo();
+    
+    if (!turnoActivo) {
+      // No hay caja abierta, mostrar modal
+      setReservaPendienteConfirmar(reservaId);
+      setModalAperturaCaja(true);
+      return;
+    }
+
+    // Si hay caja abierta, confirmar directamente
+    await confirmarReservaDirecto(reservaId);
+  };
+
+  const confirmarReservaDirecto = async (reservaId) => {
     if (!window.confirm("¿Confirmar esta reserva?")) return;
     setProcesando(reservaId);
     try {
@@ -202,6 +266,20 @@ export default function ReservasPendientes() {
     <div className="reservas-admin-container">
       <div className="reservas-admin-header">
         <h1>📋 Gestión de Reservas</h1>
+        {/* Indicador de estado de caja */}
+        <div style={{ 
+          display: 'inline-block', 
+          marginLeft: '20px',
+          padding: '8px 16px',
+          borderRadius: '20px',
+          fontSize: '14px',
+          fontWeight: 'bold',
+          background: turnoActivo ? 'rgba(76, 175, 80, 0.2)' : 'rgba(244, 67, 54, 0.2)',
+          color: turnoActivo ? '#4caf50' : '#f44336',
+          border: `2px solid ${turnoActivo ? '#4caf50' : '#f44336'}`
+        }}>
+          {turnoActivo ? '🟢 Caja Abierta' : '🔴 Caja Cerrada'}
+        </div>
       </div>
 
       {/* FILTROS */}
@@ -244,8 +322,6 @@ export default function ReservasPendientes() {
         <div className="reservas-grid">
           {reservas.map((reserva) => {
             const servicios = reserva.servicios || [];
-
-            // === TOTALES SEGUROS (solo números) ===
             const subtotalServicios = servicios.length
               ? calcularTotalServicios(servicios)
               : parsePrice(reserva.total);
@@ -409,7 +485,7 @@ export default function ReservasPendientes() {
                   </div>
                 )}
 
-                {/* MOTIVO DE RECHAZO (si existe) */}
+                {/* MOTIVO DE RECHAZO */}
                 {reserva.estado === "rechazada" && reserva.motivo_rechazo && (
                   <div className="reserva-seccion rechazo-info">
                     <h4>❌ Motivo de Rechazo</h4>
@@ -429,6 +505,131 @@ export default function ReservasPendientes() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* MODAL APERTURA DE CAJA */}
+      {modalAperturaCaja && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.8)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '20px'
+        }} onClick={() => {
+          setModalAperturaCaja(false);
+          setReservaPendienteConfirmar(null);
+        }}>
+          <div style={{
+            background: '#2a2a2a',
+            borderRadius: '16px',
+            maxWidth: '500px',
+            width: '100%',
+            boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
+            color: '#fff'
+          }} onClick={(e) => e.stopPropagation()}>
+            <div style={{
+              padding: '24px',
+              borderBottom: '1px solid #444',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <div style={{ fontSize: '20px', fontWeight: '700', color: '#ffc107' }}>
+                ⚠️ Caja Cerrada
+              </div>
+              <button style={{
+                background: 'none',
+                border: 'none',
+                color: '#aaa',
+                fontSize: '28px',
+                cursor: 'pointer'
+              }} onClick={() => {
+                setModalAperturaCaja(false);
+                setReservaPendienteConfirmar(null);
+              }}>×</button>
+            </div>
+            
+            <div style={{ padding: '24px' }}>
+              <p style={{ color: '#aaa', marginBottom: '24px', fontSize: '16px', lineHeight: '1.6' }}>
+                Para confirmar reservas, primero debes <strong style={{ color: '#ffc107' }}>abrir la caja</strong>.
+                Esto te permitirá registrar los pagos de las señas correctamente.
+              </p>
+              
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{
+                  display: 'block',
+                  color: '#ffc107',
+                  fontWeight: '600',
+                  marginBottom: '8px',
+                  fontSize: '14px'
+                }}>
+                  💵 Monto Inicial en Efectivo
+                </label>
+                <input
+                  type="number"
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    border: '2px solid #444',
+                    borderRadius: '8px',
+                    background: '#1a1a1a',
+                    color: '#fff',
+                    fontSize: '16px'
+                  }}
+                  value={montoApertura}
+                  onChange={(e) => setMontoApertura(e.target.value)}
+                  placeholder="0.00"
+                  min="0"
+                  step="0.01"
+                  autoFocus
+                />
+              </div>
+            </div>
+            
+            <div style={{
+              padding: '24px',
+              borderTop: '1px solid #444',
+              display: 'flex',
+              gap: '12px'
+            }}>
+              <button style={{
+                flex: 1,
+                padding: '14px',
+                border: 'none',
+                borderRadius: '8px',
+                fontWeight: '600',
+                fontSize: '16px',
+                cursor: 'pointer',
+                background: '#444',
+                color: '#fff'
+              }} onClick={() => {
+                setModalAperturaCaja(false);
+                setReservaPendienteConfirmar(null);
+              }}>
+                Cancelar
+              </button>
+              <button style={{
+                flex: 1,
+                padding: '14px',
+                border: 'none',
+                borderRadius: '8px',
+                fontWeight: '600',
+                fontSize: '16px',
+                cursor: 'pointer',
+                background: '#ffc107',
+                color: '#000'
+              }} onClick={abrirCaja}>
+                🔓 Abrir Caja
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

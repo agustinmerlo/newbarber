@@ -325,7 +325,7 @@ def confirmar_reserva(request, reserva_id):
                 movimiento = registrar_pago_en_caja(
                     reserva=reserva,
                     monto=reserva.seña,
-                    metodo_pago='transferencia',
+                    metodo_pago='seña',  # ✅ CORRECCIÓN: Cambiado de 'transferencia' a 'seña'
                     tipo_pago='seña',
                     usuario=request.user if request.user.is_authenticated else None
                 )
@@ -735,67 +735,3 @@ def listar_reservas(request):
     qs = qs.order_by('-fecha_creacion')
     serializer = ReservaSerializer(qs, many=True)
     return Response(serializer.data, status=200)
-# ==========================================
-# CONTINUACIÓN DE reservas/views.py
-# ==========================================
-
-# ==========================================
-# CONTADORES PARA EL PANEL DEL CLIENTE (CONTINUACIÓN)
-# ==========================================
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def reservas_cliente_contadores(request):
-    """
-    GET /api/reservas/cliente/contadores/?email=...
-    """
-    email = (request.query_params.get('email') or '').strip().lower()
-    if request.user and request.user.is_authenticated and getattr(request.user, 'email', None):
-        email = request.user.email.lower()
-
-    if not email:
-        return Response({'error': 'Se requiere el parámetro email o sesión autenticada con email'}, status=400)
-
-    base = Reserva.objects.filter(email_cliente__iexact=email)
-    ahora = timezone.localtime()
-
-    pendientes   = base.filter(estado='pendiente').count()
-    confirmadas  = base.filter(estado='confirmada').count()
-    rechazadas   = base.filter(estado='rechazada').count()
-    canceladas   = base.filter(estado='cancelada').count()
-
-    ids_future = []
-    for r in base.exclude(estado__in=['cancelada', 'rechazada']):
-        dt = _dt(r.fecha, r.horario)
-        if dt >= ahora:
-            ids_future.append(r.id)
-    proximas = base.filter(id__in=ids_future).count()
-
-    return Response({
-        "proximas": proximas,
-        "pendientes": pendientes,
-        "confirmadas": confirmadas,
-        "rechazadas": rechazadas,
-        "canceladas": canceladas,
-    }, status=200)
-
-
-# ==========================================
-# LISTAR RESERVAS (ADMIN)
-# ==========================================
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def listar_reservas(request):
-    """
-    GET /api/reservas/
-    Lista todas las reservas con filtros opcionales
-    """
-    estado = request.query_params.get('estado', None)
-    email  = request.query_params.get('email', None)
-    qs = Reserva.objects.all()
-    if estado:
-        qs = qs.filter(estado=estado)
-    if email:
-        qs = qs.filter(email_cliente__iexact=email)
-    qs = qs.order_by('-fecha_creacion')
-    serializer = ReservaSerializer(qs, many=True)
-    return Response(serializer.data, status=200) 

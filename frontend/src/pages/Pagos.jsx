@@ -11,10 +11,32 @@ const Pagos = () => {
   const [montoPago, setMontoPago] = useState(""); 
   const [metodoPago, setMetodoPago] = useState("efectivo");
   const [guardando, setGuardando] = useState(false);
+  
+  // Estados para control de caja
+  const [modalAperturaCaja, setModalAperturaCaja] = useState(false);
+  const [montoApertura, setMontoApertura] = useState("");
+  const [turnoActivo, setTurnoActivo] = useState(null);
+  const [pagosPendientes, setPagosPendientes] = useState(null);
 
   useEffect(() => {
+    verificarTurnoActivo();
     cargarReservas();
   }, []);
+
+  const verificarTurnoActivo = async () => {
+    try {
+      const res = await fetch(`${API_URL}/caja/turnos/turno_activo/`);
+      const data = await res.json();
+      if (data.existe) {
+        setTurnoActivo(data.turno);
+      } else {
+        setTurnoActivo(null);
+      }
+    } catch (err) {
+      console.error("Error verificando turno:", err);
+      setTurnoActivo(null);
+    }
+  };
 
   const cargarReservas = async () => {
     setLoading(true);
@@ -26,7 +48,7 @@ const Pagos = () => {
       
       const reservasConPagos = todasReservas.map(reserva => {
         const total = parseFloat(reserva.total || 0);
-        const seña = parseFloat(reserva.seña || 0);
+        const seña = parseFloat(reserva.seña || reserva.senia || reserva.sena || 0);
         const saldoPagado = parseFloat(reserva.saldo_pagado || 0);
         const pendiente = Math.max(0, parseFloat((total - seña - saldoPagado).toFixed(2)));
         
@@ -48,7 +70,55 @@ const Pagos = () => {
     }
   };
 
-  const abrirModalPago = (reserva) => {
+  const abrirCaja = async () => {
+    if (!montoApertura || parseFloat(montoApertura) < 0) {
+      alert("Ingresa un monto de apertura válido");
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_URL}/caja/turnos/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ monto_apertura: parseFloat(montoApertura) })
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const data = await res.json();
+      setTurnoActivo(data);
+      setModalAperturaCaja(false);
+      setMontoApertura("");
+      
+      alert("✅ Caja abierta exitosamente");
+      
+      if (pagosPendientes) {
+        await registrarPagoDirecto(
+          pagosPendientes.reserva,
+          pagosPendientes.monto,
+          pagosPendientes.metodo
+        );
+        setPagosPendientes(null);
+      }
+    } catch (err) {
+      console.error("Error abriendo caja:", err);
+      alert("❌ Error al abrir la caja");
+    }
+  };
+
+  const abrirModalPago = async (reserva) => {
+    await verificarTurnoActivo();
+    
+    if (!turnoActivo) {
+      setPagosPendientes({
+        reserva,
+        monto: parseFloat(reserva.pendiente),
+        metodo: "efectivo"
+      });
+      setModalAperturaCaja(true);
+      return;
+    }
+
     setReservaSeleccionada(reserva);
     setMontoPago(reserva.pendiente.toString());
     setModalAbierto(true);
@@ -74,29 +144,21 @@ const Pagos = () => {
       return;
     }
 
+    await registrarPagoDirecto(reservaSeleccionada, monto, metodoPago);
+  };
+
+  const registrarPagoDirecto = async (reserva, monto, metodo) => {
     setGuardando(true);
     try {
-      // Calcular nuevos valores
-      const nuevoSaldoPagado = parseFloat(reservaSeleccionada.saldo_pagado || 0) + monto;
+      const nuevoSaldoPagado = parseFloat(reserva.saldo_pagado || 0) + monto;
 
-      console.log("📊 Valores calculados:", {
-        monto,
-        saldoActual: reservaSeleccionada.saldo_pagado,
-        nuevoSaldoPagado,
-        total: reservaSeleccionada.total,
-        seña: reservaSeleccionada.seña
-      });
-
-      // ✅ Solo actualizar la reserva - el backend registra automáticamente en caja
       const body = {
         saldo_pagado: parseFloat(nuevoSaldoPagado.toFixed(2)),
-        metodo_pago: metodoPago,
+        metodo_pago: metodo,
         fecha_pago: new Date().toISOString()
       };
 
-      console.log("📤 Enviando al backend:", body);
-
-      const res = await fetch(`${API_URL}/reservas/${reservaSeleccionada.id}/`, {
+      const res = await fetch(`${API_URL}/reservas/${reserva.id}/`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body)
@@ -104,19 +166,14 @@ const Pagos = () => {
 
       if (!res.ok) {
         const errorText = await res.text();
-        console.error("❌ Error en la respuesta:", errorText);
         throw new Error(`HTTP ${res.status}: ${errorText}`);
       }
 
-      const reservaActualizada = await res.json();
-      console.log("✅ Reserva actualizada:", reservaActualizada);
-
-      // ✅ El backend ya registró el pago en caja automáticamente
       alert(`✅ Pago de $${monto.toFixed(2)} registrado exitosamente y guardado en caja`);
       cerrarModal();
       
-      // Recargar reservas para actualizar la vista
       await cargarReservas();
+      await verificarTurnoActivo();
     } catch (err) {
       console.error("❌ Error registrando pago:", err);
       alert(`❌ Error al registrar el pago: ${err.message}`);
@@ -170,18 +227,20 @@ const Pagos = () => {
     }
   };
 
-  const totalRecaudado = parseFloat(reservas.reduce((sum, r) => {
-    return sum + parseFloat(r.seña || 0) + parseFloat(r.saldo_pagado || 0);
-  }, 0).toFixed(2));
+  const totalRecaudado = reservas.reduce((sum, r) => {
+    const seña = parseFloat(r.seña || 0);
+    const saldoPagado = parseFloat(r.saldo_pagado || 0);
+    return sum + seña + saldoPagado;
+  }, 0);
   
-  const totalPendiente = parseFloat(reservas.reduce((sum, r) => {
+  const totalPendiente = reservas.reduce((sum, r) => {
     return sum + parseFloat(r.pendiente || 0);
-  }, 0).toFixed(2));
+  }, 0);
   
   const reservasConSeña = reservas.filter(r => parseFloat(r.seña || 0) > 0).length;
 
   return (
-    <div style={{ padding: '20px' }}>
+    <div style={{ padding: '20px', backgroundColor: '#121212', minHeight: '100vh', color: '#fff' }}>
       <style>{`
         .pagos-header {
           display: flex;
@@ -191,12 +250,10 @@ const Pagos = () => {
           flex-wrap: wrap;
           gap: 20px;
         }
-
         .filtros-pagos {
           display: flex;
           gap: 10px;
         }
-
         .filtro-btn {
           padding: 8px 20px;
           border: 2px solid #444;
@@ -207,48 +264,40 @@ const Pagos = () => {
           transition: all 0.2s;
           font-weight: 600;
         }
-
         .filtro-btn.active {
           background: #ffc107;
           color: #000;
           border-color: #ffc107;
         }
-
         .filtro-btn:hover {
           border-color: #ffc107;
         }
-
         .stats-row {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
           gap: 20px;
           margin-bottom: 30px;
         }
-
         .stat-card-pago {
           background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
           padding: 20px;
           border-radius: 12px;
           border-left: 4px solid #ffc107;
         }
-
         .stat-label {
           color: #aaa;
           font-size: 14px;
           margin-bottom: 8px;
         }
-
         .stat-value {
           color: #ffc107;
           font-size: 28px;
           font-weight: 700;
         }
-
         .reservas-grid {
           display: grid;
           gap: 20px;
         }
-
         .reserva-pago-card {
           background: #2a2a2a;
           border-radius: 12px;
@@ -256,13 +305,11 @@ const Pagos = () => {
           border: 2px solid #333;
           transition: all 0.3s;
         }
-
         .reserva-pago-card:hover {
           transform: translateY(-2px);
           box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
           border-color: #ffc107;
         }
-
         .reserva-pago-header {
           display: flex;
           justify-content: space-between;
@@ -271,24 +318,20 @@ const Pagos = () => {
           background: rgba(255, 193, 7, 0.05);
           border-bottom: 1px solid #333;
         }
-
         .cliente-info {
           display: flex;
           flex-direction: column;
           gap: 5px;
         }
-
         .cliente-nombre-pago {
           font-size: 18px;
           font-weight: 600;
           color: #fff;
         }
-
         .fecha-hora-pago {
           font-size: 14px;
           color: #aaa;
         }
-
         .estado-pago-badge {
           padding: 6px 16px;
           border-radius: 20px;
@@ -297,17 +340,14 @@ const Pagos = () => {
           font-weight: 600;
           text-transform: uppercase;
         }
-
         .reserva-pago-body {
           padding: 20px;
         }
-
         .servicios-pago {
           margin-bottom: 20px;
           padding-bottom: 20px;
           border-bottom: 1px solid #333;
         }
-
         .servicio-item-pago {
           display: flex;
           justify-content: space-between;
@@ -315,13 +355,11 @@ const Pagos = () => {
           color: #ccc;
           font-size: 14px;
         }
-
         .desglose-pago {
           display: grid;
           gap: 12px;
           margin-bottom: 20px;
         }
-
         .linea-pago {
           display: flex;
           justify-content: space-between;
@@ -330,41 +368,34 @@ const Pagos = () => {
           background: #1a1a1a;
           border-radius: 6px;
         }
-
         .linea-pago.total {
           background: rgba(255, 193, 7, 0.1);
           border: 1px solid #ffc107;
           font-weight: 700;
           font-size: 16px;
         }
-
         .linea-pago.pendiente {
           background: rgba(244, 67, 54, 0.1);
           border: 1px solid #f44336;
           font-weight: 700;
           color: #f44336;
         }
-
         .linea-pago.pagado-item {
           background: rgba(76, 175, 80, 0.1);
           border: 1px solid #4caf50;
         }
-
         .label-pago {
           color: #aaa;
           font-size: 14px;
         }
-
         .monto-pago {
           color: #fff;
           font-weight: 600;
         }
-
         .acciones-pago {
           display: flex;
           gap: 10px;
         }
-
         .btn-pago {
           flex: 1;
           padding: 12px;
@@ -378,22 +409,18 @@ const Pagos = () => {
           justify-content: center;
           gap: 8px;
         }
- 
         .btn-saldo {
           background: #4caf50;
           color: white;
         }
-
         .btn-saldo:hover {
           background: #388e3c;
           transform: translateY(-2px);
         }
-
         .btn-pago:disabled {
           opacity: 0.5;
           cursor: not-allowed;
         }
-
         .modal-overlay {
           position: fixed;
           top: 0;
@@ -407,7 +434,6 @@ const Pagos = () => {
           z-index: 1000;
           padding: 20px;
         }
-
         .modal-content {
           background: #2a2a2a;
           border-radius: 16px;
@@ -417,7 +443,6 @@ const Pagos = () => {
           overflow-y: auto;
           box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
         }
-
         .modal-header {
           padding: 24px;
           border-bottom: 1px solid #333;
@@ -425,13 +450,11 @@ const Pagos = () => {
           justify-content: space-between;
           align-items: center;
         }
-
         .modal-title {
           font-size: 20px;
           font-weight: 700;
           color: #ffc107;
         }
-
         .btn-cerrar {
           background: none;
           border: none;
@@ -445,20 +468,16 @@ const Pagos = () => {
           justify-content: center;
           border-radius: 4px;
         }
-
         .btn-cerrar:hover {
           background: #333;
           color: #fff;
         }
-
         .modal-body {
           padding: 24px;
         }
-
         .form-group {
           margin-bottom: 20px;
         }
-
         .form-label {
           display: block;
           color: #ffc107;
@@ -466,7 +485,6 @@ const Pagos = () => {
           margin-bottom: 8px;
           font-size: 14px;
         }
-
         .form-input {
           width: 100%;
           padding: 12px 16px;
@@ -477,13 +495,11 @@ const Pagos = () => {
           font-size: 16px;
           transition: all 0.2s;
         }
-
         .form-input:focus {
           outline: none;
           border-color: #ffc107;
           box-shadow: 0 0 0 3px rgba(255, 193, 7, 0.1);
         }
-
         .info-box {
           background: rgba(255, 193, 7, 0.1);
           border: 1px solid #ffc107;
@@ -491,14 +507,12 @@ const Pagos = () => {
           padding: 16px;
           margin-bottom: 20px;
         }
-
         .info-item {
           display: flex;
           justify-content: space-between;
           padding: 8px 0;
           color: #fff;
         }
-
         .alert-info {
           background: rgba(33, 150, 243, 0.1);
           border: 1px solid #2196f3;
@@ -511,14 +525,12 @@ const Pagos = () => {
           align-items: center;
           gap: 8px;
         }
-
         .modal-footer {
           padding: 24px;
           border-top: 1px solid #333;
           display: flex;
           gap: 12px;
         }
-
         .btn-modal {
           flex: 1;
           padding: 14px;
@@ -529,56 +541,45 @@ const Pagos = () => {
           cursor: pointer;
           transition: all 0.2s;
         }
-
         .btn-cancelar {
           background: #444;
           color: #fff;
         }
-
         .btn-cancelar:hover {
           background: #555;
         }
-
         .btn-confirmar {
           background: #ffc107;
           color: #000;
         }
-
         .btn-confirmar:hover {
           background: #ffca28;
           transform: translateY(-2px);
         }
-
         .btn-confirmar:disabled {
           opacity: 0.5;
           cursor: not-allowed;
         }
-
         .empty-state {
           text-align: center;
           padding: 60px 20px;
           color: #aaa;
         }
-
         .empty-icon {
           font-size: 64px;
           margin-bottom: 16px;
         }
-
         @media (max-width: 768px) {
           .pagos-header {
             flex-direction: column;
             align-items: stretch;
           }
-
           .filtros-pagos {
             flex-wrap: wrap;
           }
-
           .acciones-pago {
             flex-direction: column;
           }
-
           .modal-footer {
             flex-direction: column;
           }
@@ -586,7 +587,21 @@ const Pagos = () => {
       `}</style>
 
       <div className="pagos-header">
-        <h2 style={{ margin: 0, color: '#fff' }}>💰 Gestión de Pagos</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
+          <h2 style={{ margin: 0, color: '#fff' }}>💰 Gestión de Pagos</h2>
+          <div style={{ 
+            display: 'inline-block',
+            padding: '8px 16px',
+            borderRadius: '20px',
+            fontSize: '14px',
+            fontWeight: 'bold',
+            background: turnoActivo ? 'rgba(76, 175, 80, 0.2)' : 'rgba(244, 67, 54, 0.2)',
+            color: turnoActivo ? '#4caf50' : '#f44336',
+            border: `2px solid ${turnoActivo ? '#4caf50' : '#f44336'}`
+          }}>
+            {turnoActivo ? '🟢 Caja Abierta' : '🔴 Caja Cerrada'}
+          </div>
+        </div>
         <div className="filtros-pagos">
           <button 
             className={`filtro-btn ${filtro === "pendientes" ? "active" : ""}`}
@@ -716,13 +731,61 @@ const Pagos = () => {
         </div>
       )}
 
+      {modalAperturaCaja && (
+        <div className="modal-overlay" onClick={() => {
+          setModalAperturaCaja(false);
+          setPagosPendientes(null);
+        }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">⚠️ Caja Cerrada</div>
+              <button className="btn-cerrar" onClick={() => {
+                setModalAperturaCaja(false);
+                setPagosPendientes(null);
+              }}>×</button>
+            </div>
+            
+            <div className="modal-body">
+              <p style={{ color: '#aaa', marginBottom: '24px', fontSize: '16px', lineHeight: '1.6' }}>
+                Para registrar pagos, primero debes <strong style={{ color: '#ffc107' }}>abrir la caja</strong>.
+                Esto te permitirá registrar los ingresos correctamente.
+              </p>
+              
+              <div className="form-group">
+                <label className="form-label">💵 Monto Inicial en Efectivo</label>
+                <input
+                  type="number"
+                  className="form-input"
+                  value={montoApertura}
+                  onChange={(e) => setMontoApertura(e.target.value)}
+                  placeholder="0.00"
+                  min="0"
+                  step="0.01"
+                  autoFocus
+                />
+              </div>
+            </div>
+            
+            <div className="modal-footer">
+              <button className="btn-modal btn-cancelar" onClick={() => {
+                setModalAperturaCaja(false);
+                setPagosPendientes(null);
+              }}>
+                Cancelar
+              </button>
+              <button className="btn-modal btn-confirmar" onClick={abrirCaja}>
+                🔓 Abrir Caja
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {modalAbierto && reservaSeleccionada && (
         <div className="modal-overlay" onClick={cerrarModal}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <div className="modal-title">
-                💵 Registrar Pago de Saldo
-              </div>
+              <div className="modal-title">💵 Registrar Pago de Saldo</div>
               <button className="btn-cerrar" onClick={cerrarModal}>×</button>
             </div>
 
@@ -759,9 +822,7 @@ const Pagos = () => {
               </div>
 
               <div className="form-group">
-                <label className="form-label">
-                  Monto a cobrar
-                </label>
+                <label className="form-label">Monto a cobrar</label>
                 <input
                   type="number"
                   className="form-input"

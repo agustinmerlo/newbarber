@@ -4,7 +4,7 @@ from .models import MovimientoCaja, CierreCaja, TurnoCaja
 
 
 class TurnoCajaSerializer(serializers.ModelSerializer):
-    """Serializer para TurnoCaja"""
+    """Serializer para TurnoCaja con TODOS los métodos de pago"""
     usuario_apertura_nombre = serializers.SerializerMethodField()
     usuario_cierre_nombre = serializers.SerializerMethodField()
     cantidad_movimientos = serializers.SerializerMethodField()
@@ -19,14 +19,33 @@ class TurnoCajaSerializer(serializers.ModelSerializer):
             'usuario_apertura',
             'usuario_apertura_nombre',
             'fecha_cierre',
-            'monto_cierre',
             'usuario_cierre',
             'usuario_cierre_nombre',
             'observaciones_cierre',
+            
+            # ✅ Totales por método de pago
             'total_ingresos_efectivo',
             'total_egresos_efectivo',
+            
+            # ✅ Esperados por método
             'efectivo_esperado',
-            'diferencia',
+            'transferencia_esperada',
+            'mercadopago_esperado',
+            'seña_esperada',
+            
+            # ✅ Montos de cierre reales
+            'monto_cierre_efectivo',
+            'monto_cierre_transferencia',
+            'monto_cierre_mercadopago',
+            'monto_cierre_seña',
+            
+            # ✅ Diferencias por método
+            'diferencia_efectivo',
+            'diferencia_transferencia',
+            'diferencia_mercadopago',
+            'diferencia_seña',
+            'diferencia_total',
+            
             'cantidad_movimientos',
             'fecha_creacion',
             'fecha_actualizacion'
@@ -39,7 +58,14 @@ class TurnoCajaSerializer(serializers.ModelSerializer):
             'total_ingresos_efectivo',
             'total_egresos_efectivo',
             'efectivo_esperado',
-            'diferencia',
+            'transferencia_esperada',
+            'mercadopago_esperado',
+            'seña_esperada',
+            'diferencia_efectivo',
+            'diferencia_transferencia',
+            'diferencia_mercadopago',
+            'diferencia_seña',
+            'diferencia_total',
             'fecha_cierre',
             'usuario_cierre'
         ]

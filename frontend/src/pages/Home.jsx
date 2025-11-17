@@ -24,11 +24,634 @@ const sections = [
 
 const BellIcon = ({ className }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-    <path d="M12 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 006 14h12a1 1 0 00.707-1.707L18 11.586V8a6 6 0 00-6-6z" stroke="currentColor" strokeWidth="1.6" />
+    <path
+      d="M12 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 006 14h12a1 1 0 00.707-1.707L18 11.586V8a6 6 0 00-6-6z"
+      stroke="currentColor"
+      strokeWidth="1.6"
+    />
     <path d="M9 18a3 3 0 006 0" stroke="currentColor" strokeWidth="1.6" />
   </svg>
 );
 
+// Formato de dinero con 2 decimales
+const formatMoney = (value) => {
+  const num = Number(value || 0);
+  return num.toLocaleString("es-AR", {
+    style: "currency",
+    currency: "ARS",
+    currencyDisplay: "narrowSymbol",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+};
+
+// ======================= SERVICIOS MÁS VENDIDOS =======================
+const ServiciosVendidosChart = () => {
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [fechaInicio, setFechaInicio] = useState("");
+  const [fechaFin, setFechaFin] = useState("");
+  const [hoveredIndex, setHoveredIndex] = useState(null);
+
+  const MAX_BAR_HEIGHT = 220;
+
+  useEffect(() => {
+    const hoy = new Date();
+    const haceUnMes = new Date();
+    haceUnMes.setMonth(haceUnMes.getMonth() - 1);
+
+    setFechaFin(hoy.toISOString().split("T")[0]);
+    setFechaInicio(haceUnMes.toISOString().split("T")[0]);
+  }, []);
+
+  useEffect(() => {
+    if (fechaInicio && fechaFin) {
+      cargarDatos();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fechaInicio, fechaFin]);
+
+  const cargarDatos = async () => {
+    setLoading(true);
+    setError("");
+
+    try {
+      const resReservas = await fetch(`${API_URL}/reservas/?estado=confirmada`);
+      if (!resReservas.ok) throw new Error("Error al cargar reservas");
+
+      const reservas = await resReservas.json();
+      const reservasArray = Array.isArray(reservas)
+        ? reservas
+        : reservas?.results ?? [];
+
+      const reservasFiltradas = reservasArray.filter((r) => {
+        if (!r.fecha) return false;
+        return r.fecha >= fechaInicio && r.fecha <= fechaFin;
+      });
+
+      const serviciosCount = {};
+
+      reservasFiltradas.forEach((reserva) => {
+        if (reserva.servicios && Array.isArray(reserva.servicios)) {
+          reserva.servicios.forEach((servicio) => {
+            const nombre = servicio.nombre || "Sin nombre";
+            const precioNum = Number(servicio.precio || 0);
+
+            if (serviciosCount[nombre]) {
+              serviciosCount[nombre].cantidad += 1;
+              serviciosCount[nombre].total += precioNum;
+            } else {
+              serviciosCount[nombre] = {
+                nombre,
+                cantidad: 1,
+                total: precioNum,
+                precio: precioNum,
+              };
+            }
+          });
+        }
+      });
+
+      const serviciosArray = Object.values(serviciosCount).sort(
+        (a, b) => b.cantidad - a.cantidad
+      );
+
+      setData(serviciosArray);
+    } catch (err) {
+      console.error("Error cargando datos:", err);
+      setError("No se pudieron cargar los datos del gráfico");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const COLORS = [
+    "#FFD700",
+    "#ff9800",
+    "#ff7043",
+    "#e91e63",
+    "#ba68c8",
+    "#7986cb",
+    "#4fc3f7",
+    "#4caf50",
+  ];
+
+  const maxCantidad = Math.max(...data.map((s) => s.cantidad), 1);
+
+  return (
+    <div
+      style={{
+        backgroundColor: "#1a1a1a",
+        padding: "22px",
+        borderRadius: "14px",
+        marginBottom: "24px",
+        border: "1px solid #262626",
+        boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          marginBottom: "18px",
+          flexWrap: "wrap",
+          gap: "14px",
+        }}
+      >
+        <div>
+          <h2
+            style={{
+              color: "#FFD700",
+              margin: 0,
+              fontSize: "1.25rem",
+            }}
+          >
+            📊 Servicios Más Vendidos
+          </h2>
+          <p
+            style={{
+              color: "#a0a0a0",
+              margin: "4px 0 0",
+              fontSize: "0.85rem",
+            }}
+          >
+            Rendimiento por servicio en el período seleccionado.
+          </p>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            gap: "10px",
+            alignItems: "flex-end",
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+            <label style={{ color: "#aaa", fontSize: "0.8em" }}>Desde</label>
+            <input
+              type="date"
+              value={fechaInicio}
+              onChange={(e) => setFechaInicio(e.target.value)}
+              max={fechaFin}
+              style={{
+                backgroundColor: "#202020",
+                border: "1px solid #333",
+                borderRadius: "8px",
+                padding: "6px 10px",
+                color: "#fff",
+                fontSize: "0.9em",
+              }}
+            />
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+            <label style={{ color: "#aaa", fontSize: "0.8em" }}>Hasta</label>
+            <input
+              type="date"
+              value={fechaFin}
+              onChange={(e) => setFechaFin(e.target.value)}
+              min={fechaInicio}
+              style={{
+                backgroundColor: "#202020",
+                border: "1px solid #333",
+                borderRadius: "8px",
+                padding: "6px 10px",
+                color: "#fff",
+                fontSize: "0.9em",
+              }}
+            />
+          </div>
+
+          <button
+            onClick={cargarDatos}
+            style={{
+              backgroundColor: "#FFD700",
+              color: "#000",
+              border: "none",
+              borderRadius: "8px",
+              padding: "8px 18px",
+              fontWeight: "bold",
+              fontSize: "0.9em",
+              cursor: "pointer",
+              marginTop: "2px",
+              transition: "background 0.2s, transform 0.1s",
+            }}
+            onMouseOver={(e) => {
+              e.target.style.backgroundColor = "#e6c200";
+              e.target.style.transform = "translateY(-1px)";
+            }}
+            onMouseOut={(e) => {
+              e.target.style.backgroundColor = "#FFD700";
+              e.target.style.transform = "translateY(0)";
+            }}
+          >
+            🔄 Actualizar
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div
+          style={{
+            padding: "40px",
+            textAlign: "center",
+            color: "#aaa",
+            fontSize: "0.95rem",
+          }}
+        >
+          Cargando datos del gráfico...
+        </div>
+      ) : error ? (
+        <div
+          style={{
+            padding: "30px",
+            textAlign: "center",
+            color: "#ff7474",
+            backgroundColor: "#2a1f1f",
+            borderRadius: "8px",
+            border: "1px solid #5c2a2a",
+            fontSize: "0.95rem",
+          }}
+        >
+          ⚠️ {error}
+        </div>
+      ) : data.length === 0 ? (
+        <div
+          style={{
+            padding: "40px",
+            textAlign: "center",
+            color: "#aaa",
+            backgroundColor: "#202020",
+            borderRadius: "8px",
+            border: "1px dashed #333",
+            fontSize: "0.95rem",
+          }}
+        >
+          📭 No hay servicios vendidos en este período
+        </div>
+      ) : (
+        <>
+          {/* GRÁFICO */}
+          <div
+            style={{
+              backgroundColor: "#202020",
+              borderRadius: "10px",
+              padding: "26px 16px 18px",
+              marginBottom: "22px",
+              border: "1px solid #292929",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "flex-end",
+                justifyContent: "space-around",
+                height: `${MAX_BAR_HEIGHT + 40}px`,
+                borderBottom: "1px solid #303030",
+                paddingBottom: "10px",
+                gap: "10px",
+              }}
+            >
+              {data.map((servicio, index) => {
+                const alturaPx =
+                  (servicio.cantidad / maxCantidad) * MAX_BAR_HEIGHT;
+                const color = COLORS[index % COLORS.length];
+                const isHovered = hoveredIndex === index;
+
+                return (
+                  <div
+                    key={index}
+                    style={{
+                      flex: 1,
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      position: "relative",
+                      cursor: "pointer",
+                      minWidth: "60px",
+                    }}
+                    onMouseEnter={() => setHoveredIndex(index)}
+                    onMouseLeave={() => setHoveredIndex(null)}
+                  >
+                    {isHovered && (
+                      <div
+                        style={{
+                          position: "absolute",
+                          bottom: `${alturaPx + 40}px`,
+                          left: "50%",
+                          transform: "translateX(-50%)",
+                          backgroundColor: "#1c1c1c",
+                          border: "1px solid #333",
+                          borderRadius: "8px",
+                          padding: "10px 12px",
+                          minWidth: "200px",
+                          boxShadow: "0 6px 20px rgba(0,0,0,0.7)",
+                          zIndex: 10,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        <div
+                          style={{
+                            color: "#FFD700",
+                            fontWeight: "bold",
+                            marginBottom: "6px",
+                            fontSize: "0.9rem",
+                          }}
+                        >
+                          {servicio.nombre}
+                        </div>
+                        <div
+                          style={{
+                            color: "#fff",
+                            fontSize: "0.85rem",
+                            marginBottom: 2,
+                          }}
+                        >
+                          Ventas: <strong>{servicio.cantidad}</strong>
+                        </div>
+                        <div
+                          style={{
+                            color: "#4caf50",
+                            fontSize: "0.85rem",
+                            marginBottom: 2,
+                          }}
+                        >
+                          Total: <strong>{formatMoney(servicio.total)}</strong>
+                        </div>
+                        <div style={{ color: "#aaa", fontSize: "0.8rem" }}>
+                          Precio: {formatMoney(servicio.precio)}
+                        </div>
+                      </div>
+                    )}
+
+                    <div
+                      style={{
+                        color: "#fff",
+                        fontWeight: "bold",
+                        fontSize: "1rem",
+                        marginBottom: "6px",
+                        opacity: isHovered ? 1 : 0.8,
+                      }}
+                    >
+                      {servicio.cantidad}
+                    </div>
+
+                    <div
+                      style={{
+                        width: "100%",
+                        height: `${alturaPx}px`,
+                        backgroundColor: color,
+                        borderRadius: "8px 8px 0 0",
+                        transition: "all 0.25s ease",
+                        transform: isHovered ? "scaleY(1.05)" : "scaleY(1)",
+                        transformOrigin: "bottom",
+                        boxShadow: isHovered ? `0 0 18px ${color}50` : "none",
+                      }}
+                    />
+
+                    <div
+                      style={{
+                        fontSize: "0.8rem",
+                        marginTop: "8px",
+                        textAlign: "center",
+                        maxWidth: "100%",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        fontWeight: isHovered ? "600" : "normal",
+                        color: isHovered ? color : "#b3b3b3",
+                      }}
+                    >
+                      {servicio.nombre}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                gap: "18px",
+                marginTop: "16px",
+                flexWrap: "wrap",
+                fontSize: "0.85rem",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  color: "#b3b3b3",
+                }}
+              >
+                <div
+                  style={{
+                    width: "12px",
+                    height: "12px",
+                    borderRadius: "50%",
+                    backgroundColor: "#FFD700",
+                  }}
+                />
+                Cantidad de ventas por servicio
+              </div>
+            </div>
+          </div>
+
+          {/* TABLA RESUMEN */}
+          <div>
+            <h3
+              style={{
+                color: "#FFD700",
+                marginBottom: "12px",
+                fontSize: "1.05em",
+              }}
+            >
+              📋 Resumen detallado
+            </h3>
+            <div
+              style={{
+                overflowX: "auto",
+                backgroundColor: "#202020",
+                borderRadius: "8px",
+                padding: "10px",
+                border: "1px solid #292929",
+              }}
+            >
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  color: "#ddd",
+                  fontSize: "0.9rem",
+                }}
+              >
+                <thead>
+                  <tr style={{ borderBottom: "2px solid #303030" }}>
+                    <th
+                      style={{
+                        padding: "10px",
+                        textAlign: "left",
+                        color: "#FFD700",
+                      }}
+                    >
+                      Puesto
+                    </th>
+                    <th
+                      style={{
+                        padding: "10px",
+                        textAlign: "left",
+                        color: "#FFD700",
+                      }}
+                    >
+                      Servicio
+                    </th>
+                    <th
+                      style={{
+                        padding: "10px",
+                        textAlign: "center",
+                        color: "#FFD700",
+                      }}
+                    >
+                      Ventas
+                    </th>
+                    <th
+                      style={{
+                        padding: "10px",
+                        textAlign: "right",
+                        color: "#FFD700",
+                      }}
+                    >
+                      Precio
+                    </th>
+                    <th
+                      style={{
+                        padding: "10px",
+                        textAlign: "right",
+                        color: "#FFD700",
+                      }}
+                    >
+                      Total
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.map((servicio, index) => (
+                    <tr
+                      key={index}
+                      style={{
+                        borderBottom: "1px solid #303030",
+                        transition: "background 0.2s",
+                      }}
+                      onMouseOver={(e) =>
+                        (e.currentTarget.style.backgroundColor = "#262626")
+                      }
+                      onMouseOut={(e) =>
+                        (e.currentTarget.style.backgroundColor = "transparent")
+                      }
+                    >
+                      <td style={{ padding: "10px" }}>
+                        <span
+                          style={{
+                            backgroundColor: COLORS[index % COLORS.length],
+                            color: "#000",
+                            padding: "4px 10px",
+                            borderRadius: "6px",
+                            fontWeight: "bold",
+                            fontSize: "0.85em",
+                          }}
+                        >
+                          #{index + 1}
+                        </span>
+                      </td>
+                      <td style={{ padding: "10px", fontWeight: "500" }}>
+                        {servicio.nombre}
+                      </td>
+                      <td
+                        style={{
+                          padding: "10px",
+                          textAlign: "center",
+                          fontSize: "1em",
+                          fontWeight: "bold",
+                        }}
+                      >
+                        {servicio.cantidad}
+                      </td>
+                      <td
+                        style={{
+                          padding: "10px",
+                          textAlign: "right",
+                          color: "#bbb",
+                        }}
+                      >
+                        {formatMoney(servicio.precio)}
+                      </td>
+                      <td
+                        style={{
+                          padding: "10px",
+                          textAlign: "right",
+                          color: "#4caf50",
+                          fontWeight: "bold",
+                        }}
+                      >
+                        {formatMoney(servicio.total)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr
+                    style={{
+                      borderTop: "2px solid #FFD700",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    <td
+                      colSpan="2"
+                      style={{ padding: "10px", color: "#FFD700" }}
+                    >
+                      TOTAL
+                    </td>
+                    <td
+                      style={{
+                        padding: "10px",
+                        textAlign: "center",
+                        color: "#fff",
+                        fontSize: "1.05em",
+                      }}
+                    >
+                      {data.reduce((sum, s) => sum + s.cantidad, 0)}
+                    </td>
+                    <td style={{ padding: "10px" }} />
+                    <td
+                      style={{
+                        padding: "10px",
+                        textAlign: "right",
+                        color: "#4caf50",
+                        fontSize: "1.05em",
+                      }}
+                    >
+                      {formatMoney(
+                        data.reduce((sum, s) => sum + s.total, 0)
+                      )}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+// ======================= HOME PRINCIPAL =======================
 const Home = () => {
   const navigate = useNavigate();
   const [activeSection, setActiveSection] = useState("Inicio");
@@ -39,7 +662,6 @@ const Home = () => {
     if (storedRole) setRole(storedRole);
   }, []);
 
-  // ✅ Estado para citas dinámicas
   const [citas, setCitas] = useState([]);
   const [loadingCitas, setLoadingCitas] = useState(true);
 
@@ -57,7 +679,6 @@ const Home = () => {
   const [showNotif, setShowNotif] = useState(false);
   const notifRef = useRef(null);
 
-  // ✅ Cargar servicios
   useEffect(() => {
     const load = async () => {
       setLoadingServices(true);
@@ -77,67 +698,39 @@ const Home = () => {
     load();
   }, []);
 
-  // ✅ Cargar próximas citas de TODOS los barberos
   useEffect(() => {
     const cargarCitas = async () => {
       setLoadingCitas(true);
       try {
         const res = await fetch(`${API_URL}/reservas/?estado=confirmada`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        
+
         const data = await res.json();
         const reservas = Array.isArray(data) ? data : data?.results ?? [];
-        
-        console.log("📦 Total reservas confirmadas:", reservas.length);
-        console.log("🔍 Primeras 3 reservas:", reservas.slice(0, 3).map(r => ({
-          id: r.id,
-          fecha: r.fecha,
-          horario: r.horario,
-          cliente: `${r.nombre_cliente} ${r.apellido_cliente}`,
-          barbero: r.barbero_nombre
-        })));
-        
-        // Filtrar solo citas futuras
+
         const ahora = new Date();
-        console.log("⏰ Fecha actual:", ahora.toLocaleString());
-        
-        const citasFuturas = reservas.filter(r => {
-          if (!r.fecha || !r.horario) {
-            console.log("❌ Reserva sin fecha/horario:", r.id);
-            return false;
-          }
-          const [year, month, day] = r.fecha.split('-').map(Number);
-          const [hours, minutes] = r.horario.split(':').map(Number);
+
+        const citasFuturas = reservas.filter((r) => {
+          if (!r.fecha || !r.horario) return false;
+          const [year, month, day] = r.fecha.split("-").map(Number);
+          const [hours, minutes] = r.horario.split(":").map(Number);
           const fechaReserva = new Date(year, month - 1, day, hours, minutes);
-          const esFutura = fechaReserva > ahora;
-          
-          if (!esFutura) {
-            console.log(`⏳ Reserva ${r.id} ya pasó: ${fechaReserva.toLocaleString()}`);
-          } else {
-            console.log(`✅ Reserva ${r.id} es futura: ${fechaReserva.toLocaleString()}`);
-          }
-          
-          return esFutura;
+          return fechaReserva > ahora;
         });
 
-        console.log(`🎯 Reservas futuras encontradas: ${citasFuturas.length}`);
-
-        // Ordenar por fecha/hora más próxima
         const citasOrdenadas = citasFuturas.sort((a, b) => {
-          const [yearA, monthA, dayA] = a.fecha.split('-').map(Number);
-          const [hoursA, minutesA] = a.horario.split(':').map(Number);
+          const [yearA, monthA, dayA] = a.fecha.split("-").map(Number);
+          const [hoursA, minutesA] = a.horario.split(":").map(Number);
           const fechaA = new Date(yearA, monthA - 1, dayA, hoursA, minutesA);
-          
-          const [yearB, monthB, dayB] = b.fecha.split('-').map(Number);
-          const [hoursB, minutesB] = b.horario.split(':').map(Number);
+
+          const [yearB, monthB, dayB] = b.fecha.split("-").map(Number);
+          const [hoursB, minutesB] = b.horario.split(":").map(Number);
           const fechaB = new Date(yearB, monthB - 1, dayB, hoursB, minutesB);
-          
+
           return fechaA - fechaB;
         });
 
-        // Tomar solo las primeras 4
         const citasAMostrar = citasOrdenadas.slice(0, 4);
-        console.log("📋 Citas a mostrar:", citasAMostrar.length);
         setCitas(citasAMostrar);
       } catch (err) {
         console.error("❌ Error cargando citas:", err);
@@ -145,7 +738,7 @@ const Home = () => {
         setLoadingCitas(false);
       }
     };
-    
+
     if (activeSection === "Inicio") {
       cargarCitas();
     }
@@ -170,7 +763,6 @@ const Home = () => {
   const handleSectionClick = (section) => {
     setActiveSection(section.name);
 
-    // ✅ NAVEGACIÓN PARA BARBEROS
     if (section.name === "Barberos") {
       if (role === "admin") {
         navigate("/barbers");
@@ -180,7 +772,6 @@ const Home = () => {
       return;
     }
 
-    // ✅ NAVEGACIÓN PARA SERVICIOS
     if (section.name === "Servicios") {
       if (role === "admin") {
         navigate("/services-admin");
@@ -190,7 +781,6 @@ const Home = () => {
       return;
     }
 
-    // ✅ NAVEGACIÓN PARA PROVEEDORES
     if (section.name === "Proveedores") {
       if (role === "admin") {
         navigate("/proveedores");
@@ -200,7 +790,6 @@ const Home = () => {
       return;
     }
 
-    // ✅ NAVEGACIÓN PARA EMPLEADOS
     if (section.name === "Empleados") {
       if (role === "admin") {
         navigate("/empleados");
@@ -211,45 +800,18 @@ const Home = () => {
     }
   };
 
-  const updateServiceValue = async (id, newValue) => {
-    const num = Number(newValue);
-    setPopularServices((prev) => prev.map((s) => (s.id === id ? { ...s, value: num } : s)));
-    setSavingIds((p) => ({ ...p, [id]: true }));
-    setErrorMsg("");
-
-    try {
-      const res = await fetch(`${API_URL}/servicios/${id}/`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ value: num }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    } catch (err) {
-      console.error("Error guardando servicio", err);
-      setErrorMsg("No se pudo guardar el cambio.");
-      try {
-        const r = await fetch(`${API_URL}/servicios/`);
-        const data = await r.json();
-        setPopularServices(data);
-      } catch (_) {}
-    } finally {
-      setSavingIds((p) => ({ ...p, [id]: false }));
-    }
-  };
-
-  // ✅ Funciones auxiliares para formatear
   const formatearHora = (hora) => {
     if (!hora) return "-";
-    const [h, m] = hora.substring(0, 5).split(':');
+    const [h, m] = hora.substring(0, 5).split(":");
     const hour = parseInt(h);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const ampm = hour >= 12 ? "PM" : "AM";
     const displayHour = hour % 12 || 12;
     return `${displayHour}:${m} ${ampm}`;
   };
 
   const formatearFecha = (fecha) => {
     if (!fecha) return "-";
-    const [year, month, day] = fecha.split('-').map(Number);
+    const [year, month, day] = fecha.split("-").map(Number);
     const d = new Date(year, month - 1, day);
     if (isNaN(d.getTime())) return fecha;
     return d.toLocaleDateString("es-ES", { day: "numeric", month: "short" });
@@ -268,7 +830,11 @@ const Home = () => {
       <h1>{activeSection}</h1>
       <div className="topbar-actions">
         <div className="notif-wrapper" ref={notifRef}>
-          <button className="icon-button" aria-label="Notificaciones" onClick={() => setShowNotif((v) => !v)}>
+          <button
+            className="icon-button"
+            aria-label="Notificaciones"
+            onClick={() => setShowNotif((v) => !v)}
+          >
             <BellIcon className="icon" />
             {unreadCount > 0 && <span className="badge">{unreadCount}</span>}
           </button>
@@ -277,7 +843,9 @@ const Home = () => {
             <div className="dropdown notif-dropdown">
               <div className="dropdown-header">
                 <span>Notificaciones</span>
-                <button className="link-btn" onClick={markAllAsRead}>Marcar todo leído</button>
+                <button className="link-btn" onClick={markAllAsRead}>
+                  Marcar todo leído
+                </button>
               </div>
 
               {notifications.length === 0 ? (
@@ -285,12 +853,20 @@ const Home = () => {
               ) : (
                 <ul className="notif-list">
                   {notifications.map((n) => (
-                    <li key={n.id} className={`notif-item ${n.read ? "" : "unread"}`}>
+                    <li
+                      key={n.id}
+                      className={`notif-item ${n.read ? "" : "unread"}`}
+                    >
                       <div className="notif-text">
                         <p>{n.text}</p>
                         <small>{n.time}</small>
                       </div>
-                      <button className="clear-btn" onClick={() => removeNotification(n.id)}>×</button>
+                      <button
+                        className="clear-btn"
+                        onClick={() => removeNotification(n.id)}
+                      >
+                        ×
+                      </button>
                     </li>
                   ))}
                 </ul>
@@ -310,7 +886,9 @@ const Home = () => {
           {sections.map((sec) => (
             <button
               key={sec.name}
-              className={`menu-item ${activeSection === sec.name ? "active" : ""}`}
+              className={`menu-item ${
+                activeSection === sec.name ? "active" : ""
+              }`}
               onClick={() => handleSectionClick(sec)}
             >
               <span className="icon">{sec.icon}</span>
@@ -318,7 +896,9 @@ const Home = () => {
             </button>
           ))}
         </nav>
-        <button className="logout" onClick={handleLogout}>Cerrar sesión</button>
+        <button className="logout" onClick={handleLogout}>
+          Cerrar sesión
+        </button>
       </aside>
 
       <main className="dashboard">
@@ -344,13 +924,25 @@ const Home = () => {
           <>
             <section className="appointments-section">
               <h2>Próximas citas</h2>
-              
+
               {loadingCitas ? (
-                <div style={{padding: '20px', textAlign: 'center', color: '#aaa'}}>
+                <div
+                  style={{
+                    padding: "20px",
+                    textAlign: "center",
+                    color: "#aaa",
+                  }}
+                >
                   Cargando citas...
                 </div>
               ) : citas.length === 0 ? (
-                <div style={{padding: '20px', textAlign: 'center', color: '#aaa'}}>
+                <div
+                  style={{
+                    padding: "20px",
+                    textAlign: "center",
+                    color: "#aaa",
+                  }}
+                >
                   No hay citas próximas
                 </div>
               ) : (
@@ -359,18 +951,32 @@ const Home = () => {
                     <div key={cita.id} className="appointment-card">
                       <div className="appointment-time">
                         {formatearHora(cita.horario)}
-                        <small style={{display: 'block', fontSize: '0.7em', color: '#888', marginTop: '2px'}}>
+                        <small
+                          style={{
+                            display: "block",
+                            fontSize: "0.7em",
+                            color: "#888",
+                            marginTop: "2px",
+                          }}
+                        >
                           {formatearFecha(cita.fecha)}
                         </small>
                       </div>
                       <div className="appointment-details">
-                        <strong>{cita.nombre_cliente} {cita.apellido_cliente}</strong>
+                        <strong>
+                          {cita.nombre_cliente} {cita.apellido_cliente}
+                        </strong>
                         {" - "}
-                        {cita.servicios && cita.servicios.length > 0 
-                          ? cita.servicios.map(s => s.nombre).join(", ")
-                          : "Sin servicio"
-                        }
-                        <div style={{fontSize: '0.85em', color: '#ffc107', marginTop: '4px'}}>
+                        {cita.servicios && cita.servicios.length > 0
+                          ? cita.servicios.map((s) => s.nombre).join(", ")
+                          : "Sin servicio"}
+                        <div
+                          style={{
+                            fontSize: "0.85em",
+                            color: "#FFD700",
+                            marginTop: "4px",
+                          }}
+                        >
                           👤 {cita.barbero_nombre || "Sin asignar"}
                         </div>
                       </div>
@@ -380,10 +986,12 @@ const Home = () => {
               )}
             </section>
 
+            <ServiciosVendidosChart />
+
             <div className="stats-grid">
               <div className="stat-card">
                 <h3>Ingresos de hoy</h3>
-                <p className="highlight">$35.000</p>
+                <p className="highlight">{formatMoney(35000)}</p>
               </div>
 
               <div className="stat-card">
@@ -401,11 +1009,16 @@ const Home = () => {
                 ) : (
                   <ul className="services-list">
                     {popularServices.slice(0, 5).map((s) => (
-                      <li key={s.id} className={`service-item ${savingIds[s.id] ? "saving" : ""}`}>
+                      <li
+                        key={s.id}
+                        className={`service-item ${
+                          savingIds[s.id] ? "saving" : ""
+                        }`}
+                      >
                         <div className="service-header">
                           <span className="service-name">{s.nombre}</span>
                           <span className="service-value">
-                            ${s.precio}
+                            {formatMoney(s.precio)}
                           </span>
                         </div>
                       </li>
