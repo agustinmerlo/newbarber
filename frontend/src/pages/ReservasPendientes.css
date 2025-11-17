@@ -100,7 +100,10 @@
 .estado-badge.rechazada { background: #f8d7da; color: #721c24; }
 
 /* SECCIONES */
-.reserva-seccion { margin-bottom: 15px; }
+.reserva-seccion { 
+  margin-bottom: 15px;
+  opacity: 1 !important; /* ✅ Forzar opacidad completa */
+}
 
 .reserva-seccion h4 {
   font-size: 14px;
@@ -108,12 +111,26 @@
   margin-bottom: 10px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  opacity: 1 !important;
 }
 
 .reserva-seccion p {
   margin: 5px 0;
   font-size: 14px;
-  color: #333;
+  color: #333 !important; /* ✅ Texto más oscuro */
+  opacity: 1 !important;
+}
+
+/* ✅ ESTILOS ESPECÍFICOS PARA ICONOS Y TEXTO */
+.reserva-seccion .icon {
+  opacity: 1 !important;
+}
+
+.reserva-seccion strong,
+.reserva-seccion span,
+.reserva-seccion div {
+  color: #333 !important;
+  opacity: 1 !important;
 }
 
 /* DETALLES */
@@ -122,20 +139,34 @@
   grid-template-columns: repeat(2, 1fr);
   gap: 10px;
   font-size: 14px;
+  opacity: 1 !important; /* ✅ Forzar visibilidad */
 }
 
 .detalle-grid .label {
-  color: #666;
+  color: #666 !important;
   font-weight: 600;
-}
-
-.detalle-grid .detalle-item .valor {
-  color: #111 !important;
   opacity: 1 !important;
 }
 
-/* Evitar opacidad heredada en el bloque de detalles */
-.reserva-seccion .detalle-grid {
+.detalle-grid .valor {
+  color: #111 !important;
+  opacity: 1 !important;
+  font-weight: 500;
+}
+
+.detalle-item {
+  opacity: 1 !important;
+}
+
+.detalle-item .label,
+.detalle-item .valor {
+  opacity: 1 !important;
+}
+
+/* ✅ EMAIL Y TELÉFONO */
+.reserva-seccion p:has(.icon),
+.reserva-seccion p > span {
+  color: #333 !important;
   opacity: 1 !important;
 }
 
@@ -147,6 +178,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  opacity: 1 !important;
 }
 
 .servicio-item {
@@ -158,6 +190,7 @@
   border: 1px solid #eee;
   border-radius: 8px;
   padding: 10px 12px;
+  opacity: 1 !important;
 }
 
 .servicio-info {
@@ -165,22 +198,39 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  opacity: 1 !important;
 }
 
-.servicio-nombre { font-weight: 600; color: #333; }
-.servicio-cantidad { color: #666; font-weight: 500; }
-.servicio-duracion { color: #888; font-size: 13px; }
+.servicio-nombre { 
+  font-weight: 600; 
+  color: #333 !important;
+  opacity: 1 !important;
+}
+
+.servicio-cantidad { 
+  color: #666 !important; 
+  font-weight: 500;
+  opacity: 1 !important;
+}
+
+.servicio-duracion { 
+  color: #888 !important; 
+  font-size: 13px;
+  opacity: 1 !important;
+}
 
 .servicio-precio {
   font-weight: 700;
-  color: #333;
+  color: #333 !important;
   white-space: nowrap;
+  opacity: 1 !important;
 }
 
 .servicio-subtotal {
-  color: #666;
+  color: #666 !important;
   font-weight: 600;
   margin-left: 6px;
+  opacity: 1 !important;
 }
 
 /* PAGO */
@@ -188,17 +238,33 @@
   background: #f8f9fa;
   padding: 15px;
   border-radius: 8px;
+  opacity: 1 !important;
 }
 
-.pago-detalle { display: flex; flex-direction: column; gap: 8px; }
+.pago-detalle { 
+  display: flex; 
+  flex-direction: column; 
+  gap: 8px;
+  opacity: 1 !important;
+}
 
 .pago-item {
   display: flex;
   justify-content: space-between;
   font-size: 14px;
+  opacity: 1 !important;
 }
 
-.pago-item.total strong { font-size: 16px; }
+.pago-item span,
+.pago-item strong {
+  color: #333 !important;
+  opacity: 1 !important;
+}
+
+.pago-item.total strong { 
+  font-size: 16px;
+  color: #111 !important;
+}
 
 .pago-item.seña {
   padding-top: 10px;
@@ -206,8 +272,10 @@
 }
 
 .pago-item .highlight {
-  color: #c9a227;
+  color: #c9a227 !important;
   font-size: 18px;
+  opacity: 1 !important;
+  font-weight: 700;
 }
 
 /* BOTONES */
@@ -215,12 +283,13 @@
   width: 100%;
   padding: 10px;
   background: #2196f3;
-  color: white;
+  color: white !important;
   border: none;
   border-radius: 6px;
   cursor: pointer;
   font-weight: 600;
   transition: all 0.2s;
+  opacity: 1 !important;
 }
 
 .btn-ver-comprobante:hover { background: #1976d2; }
@@ -240,12 +309,14 @@
   cursor: pointer;
   font-weight: 600;
   transition: all 0.2s;
+  color: white !important;
+  opacity: 1 !important;
 }
 
-.btn-confirmar { background: #4caf50; color: #fff; }
+.btn-confirmar { background: #4caf50; }
 .btn-confirmar:hover { background: #45a049; }
 
-.btn-rechazar { background: #f44336; color: #fff; }
+.btn-rechazar { background: #f44336; }
 .btn-rechazar:hover { background: #da190b; }
 
 /* FOOTER */
@@ -254,9 +325,14 @@
   padding-top: 10px;
   border-top: 1px solid #f0f0f0;
   text-align: center;
+  opacity: 1 !important;
 }
 
-.reserva-footer small { color: #999; font-size: 12px; }
+.reserva-footer small { 
+  color: #999 !important; 
+  font-size: 12px;
+  opacity: 1 !important;
+}
 
 /* MODAL */
 .modal-overlay {
@@ -295,11 +371,33 @@
   font-weight: bold;
 }
 
-.comprobante-info { margin-bottom: 20px; }
-.info-row { display: flex; gap: 8px; margin: 6px 0; }
-.info-row strong { width: 130px; color: #444; }
+.comprobante-info { 
+  margin-bottom: 20px;
+  opacity: 1 !important;
+}
 
-.comprobante-imagen-container { margin: 20px 0; text-align: center; }
+.info-row { 
+  display: flex; 
+  gap: 8px; 
+  margin: 6px 0;
+  opacity: 1 !important;
+}
+
+.info-row strong { 
+  width: 130px; 
+  color: #444 !important;
+  opacity: 1 !important;
+}
+
+.info-row span {
+  color: #333 !important;
+  opacity: 1 !important;
+}
+
+.comprobante-imagen-container { 
+  margin: 20px 0; 
+  text-align: center;
+}
 
 .comprobante-imagen {
   max-width: 100%;
@@ -314,6 +412,8 @@
   display: block;
   margin-bottom: 8px;
   font-weight: 600;
+  color: #333 !important;
+  opacity: 1 !important;
 }
 
 .rechazo-section textarea {
@@ -323,6 +423,8 @@
   border-radius: 6px;
   font-family: inherit;
   resize: vertical;
+  color: #333 !important;
+  opacity: 1 !important;
 }
 
 .modal-botones {
@@ -341,17 +443,32 @@
   font-weight: 600;
   font-size: 15px;
   transition: all 0.2s;
+  color: white !important;
+  opacity: 1 !important;
 }
 
-.btn-modal-confirmar { background: #4caf50; color: #fff; }
-.btn-modal-rechazar { background: #f44336; color: #fff; }
+.btn-modal-confirmar { background: #4caf50; }
+.btn-modal-rechazar { background: #f44336; }
 
 /* ESTADOS VACÍOS */
 .loading, .empty-state {
   text-align: center;
   padding: 60px 20px;
-  color: #999;
+  color: #999 !important;
   font-size: 16px;
+  opacity: 1 !important;
+}
+
+/* ✅ FORZAR VISIBILIDAD EN TODOS LOS TEXTOS DE LA CARD */
+.reserva-card * {
+  opacity: 1 !important;
+}
+
+.reserva-card p,
+.reserva-card span,
+.reserva-card strong,
+.reserva-card div {
+  color: #333 !important;
 }
 
 /* RESPONSIVE */

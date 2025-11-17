@@ -45,7 +45,7 @@ const formatMoney = (value) => {
   });
 };
 
-// ======================= SERVICIOS MÁS VENDIDOS =======================
+// ======================= SERVICIOS MÁS VENDIDOS - GRÁFICO DE TORTA =======================
 const ServiciosVendidosChart = () => {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -53,8 +53,6 @@ const ServiciosVendidosChart = () => {
   const [fechaInicio, setFechaInicio] = useState("");
   const [fechaFin, setFechaFin] = useState("");
   const [hoveredIndex, setHoveredIndex] = useState(null);
-
-  const MAX_BAR_HEIGHT = 220;
 
   useEffect(() => {
     const hoy = new Date();
@@ -95,15 +93,29 @@ const ServiciosVendidosChart = () => {
       reservasFiltradas.forEach((reserva) => {
         if (reserva.servicios && Array.isArray(reserva.servicios)) {
           reserva.servicios.forEach((servicio) => {
-            const nombre = servicio.nombre || "Sin nombre";
+            // ✅ NORMALIZAR NOMBRE: minúsculas, sin espacios extras, capitalizar primera letra
+            let nombreOriginal = servicio.nombre || "Sin nombre";
+            
+            // Convertir a minúsculas y quitar espacios extras
+            let nombreNormalizado = nombreOriginal
+              .toLowerCase()
+              .trim()
+              .replace(/\s+/g, ' '); // Reemplazar múltiples espacios por uno solo
+            
+            // Capitalizar primera letra de cada palabra
+            nombreNormalizado = nombreNormalizado
+              .split(' ')
+              .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+              .join(' ');
+            
             const precioNum = Number(servicio.precio || 0);
 
-            if (serviciosCount[nombre]) {
-              serviciosCount[nombre].cantidad += 1;
-              serviciosCount[nombre].total += precioNum;
+            if (serviciosCount[nombreNormalizado]) {
+              serviciosCount[nombreNormalizado].cantidad += 1;
+              serviciosCount[nombreNormalizado].total += precioNum;
             } else {
-              serviciosCount[nombre] = {
-                nombre,
+              serviciosCount[nombreNormalizado] = {
+                nombre: nombreNormalizado,
                 cantidad: 1,
                 total: precioNum,
                 precio: precioNum,
@@ -116,6 +128,10 @@ const ServiciosVendidosChart = () => {
       const serviciosArray = Object.values(serviciosCount).sort(
         (a, b) => b.cantidad - a.cantidad
       );
+
+      // 🔍 DEBUG: Ver qué servicios se están contando
+      console.log("📊 Servicios encontrados:", serviciosArray);
+      console.log("📋 Reservas filtradas:", reservasFiltradas.length);
 
       setData(serviciosArray);
     } catch (err) {
@@ -137,7 +153,18 @@ const ServiciosVendidosChart = () => {
     "#4caf50",
   ];
 
-  const maxCantidad = Math.max(...data.map((s) => s.cantidad), 1);
+  // Calcular el total de ventas para los porcentajes
+  const totalVentas = data.reduce((sum, s) => sum + s.cantidad, 0);
+
+  // Calcular ángulos para el gráfico de torta
+  const dataWithAngles = data.map((servicio, index) => {
+    const porcentaje = (servicio.cantidad / totalVentas) * 100;
+    return {
+      ...servicio,
+      porcentaje: porcentaje.toFixed(1),
+      color: COLORS[index % COLORS.length],
+    };
+  });
 
   return (
     <div
@@ -294,7 +321,7 @@ const ServiciosVendidosChart = () => {
         </div>
       ) : (
         <>
-          {/* GRÁFICO */}
+          {/* GRÁFICO DE TORTA */}
           <div
             style={{
               backgroundColor: "#202020",
@@ -307,158 +334,186 @@ const ServiciosVendidosChart = () => {
             <div
               style={{
                 display: "flex",
-                alignItems: "flex-end",
-                justifyContent: "space-around",
-                height: `${MAX_BAR_HEIGHT + 40}px`,
-                borderBottom: "1px solid #303030",
-                paddingBottom: "10px",
-                gap: "10px",
+                flexDirection: window.innerWidth > 768 ? "row" : "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "40px",
+                minHeight: "350px",
               }}
             >
-              {data.map((servicio, index) => {
-                const alturaPx =
-                  (servicio.cantidad / maxCantidad) * MAX_BAR_HEIGHT;
-                const color = COLORS[index % COLORS.length];
-                const isHovered = hoveredIndex === index;
+              {/* SVG - Gráfico de Torta */}
+              <svg
+                width="300"
+                height="300"
+                viewBox="0 0 300 300"
+                style={{ maxWidth: "100%" }}
+              >
+                <g transform="translate(150, 150)">
+                  {dataWithAngles.map((servicio, index) => {
+                    const startAngle = dataWithAngles
+                      .slice(0, index)
+                      .reduce((acc, s) => acc + (parseFloat(s.porcentaje) / 100) * 360, 0);
+                    const endAngle = startAngle + (parseFloat(servicio.porcentaje) / 100) * 360;
+                    
+                    const startRad = (startAngle - 90) * (Math.PI / 180);
+                    const endRad = (endAngle - 90) * (Math.PI / 180);
+                    
+                    const radius = 120;
+                    const x1 = radius * Math.cos(startRad);
+                    const y1 = radius * Math.sin(startRad);
+                    const x2 = radius * Math.cos(endRad);
+                    const y2 = radius * Math.sin(endRad);
+                    
+                    const largeArc = endAngle - startAngle > 180 ? 1 : 0;
+                    
+                    const isHovered = hoveredIndex === index;
+                    const scale = isHovered ? 1.05 : 1;
+                    
+                    // Calcular posición del texto (porcentaje)
+                    const midAngle = (startAngle + endAngle) / 2;
+                    const midRad = (midAngle - 90) * (Math.PI / 180);
+                    const textRadius = radius * 0.7;
+                    const textX = textRadius * Math.cos(midRad);
+                    const textY = textRadius * Math.sin(midRad);
 
-                return (
-                  <div
-                    key={index}
-                    style={{
-                      flex: 1,
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      position: "relative",
-                      cursor: "pointer",
-                      minWidth: "60px",
-                    }}
-                    onMouseEnter={() => setHoveredIndex(index)}
-                    onMouseLeave={() => setHoveredIndex(null)}
-                  >
-                    {isHovered && (
-                      <div
+                    return (
+                      <g
+                        key={index}
+                        onMouseEnter={() => setHoveredIndex(index)}
+                        onMouseLeave={() => setHoveredIndex(null)}
                         style={{
-                          position: "absolute",
-                          bottom: `${alturaPx + 40}px`,
-                          left: "50%",
-                          transform: "translateX(-50%)",
-                          backgroundColor: "#1c1c1c",
-                          border: "1px solid #333",
-                          borderRadius: "8px",
-                          padding: "10px 12px",
-                          minWidth: "200px",
-                          boxShadow: "0 6px 20px rgba(0,0,0,0.7)",
-                          zIndex: 10,
-                          whiteSpace: "nowrap",
+                          cursor: "pointer",
+                          transform: `scale(${scale})`,
+                          transformOrigin: "center",
+                          transition: "transform 0.2s ease",
                         }}
                       >
-                        <div
+                        <path
+                          d={`M 0 0 L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2} Z`}
+                          fill={servicio.color}
+                          stroke="#1a1a1a"
+                          strokeWidth="2"
                           style={{
-                            color: "#FFD700",
-                            fontWeight: "bold",
-                            marginBottom: "6px",
-                            fontSize: "0.9rem",
+                            filter: isHovered ? `drop-shadow(0 0 10px ${servicio.color})` : "none",
+                            transition: "filter 0.2s ease",
                           }}
-                        >
-                          {servicio.nombre}
-                        </div>
-                        <div
-                          style={{
-                            color: "#fff",
-                            fontSize: "0.85rem",
-                            marginBottom: 2,
-                          }}
-                        >
-                          Ventas: <strong>{servicio.cantidad}</strong>
-                        </div>
-                        <div
-                          style={{
-                            color: "#4caf50",
-                            fontSize: "0.85rem",
-                            marginBottom: 2,
-                          }}
-                        >
-                          Total: <strong>{formatMoney(servicio.total)}</strong>
-                        </div>
-                        <div style={{ color: "#aaa", fontSize: "0.8rem" }}>
-                          Precio: {formatMoney(servicio.precio)}
-                        </div>
-                      </div>
-                    )}
+                        />
+                        
+                        {/* Porcentaje en el centro de cada porción */}
+                        {parseFloat(servicio.porcentaje) > 5 && (
+                          <text
+                            x={textX}
+                            y={textY}
+                            textAnchor="middle"
+                            dominantBaseline="middle"
+                            fill="#000"
+                            fontSize="14"
+                            fontWeight="bold"
+                            style={{
+                              pointerEvents: "none",
+                            }}
+                          >
+                            {servicio.porcentaje}%
+                          </text>
+                        )}
+                      </g>
+                    );
+                  })}
+                  
+                  {/* Círculo central (estilo donut) */}
+                  <circle
+                    r="45"
+                    fill="#202020"
+                    stroke="#FFD700"
+                    strokeWidth="3"
+                  />
+                  <text
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fill="#FFD700"
+                    fontSize="16"
+                    fontWeight="bold"
+                  >
+                    {totalVentas}
+                  </text>
+                  <text
+                    textAnchor="middle"
+                    y="20"
+                    fill="#aaa"
+                    fontSize="11"
+                  >
+                    ventas
+                  </text>
+                </g>
+              </svg>
 
-                    <div
-                      style={{
-                        color: "#fff",
-                        fontWeight: "bold",
-                        fontSize: "1rem",
-                        marginBottom: "6px",
-                        opacity: isHovered ? 1 : 0.8,
-                      }}
-                    >
-                      {servicio.cantidad}
-                    </div>
-
-                    <div
-                      style={{
-                        width: "100%",
-                        height: `${alturaPx}px`,
-                        backgroundColor: color,
-                        borderRadius: "8px 8px 0 0",
-                        transition: "all 0.25s ease",
-                        transform: isHovered ? "scaleY(1.05)" : "scaleY(1)",
-                        transformOrigin: "bottom",
-                        boxShadow: isHovered ? `0 0 18px ${color}50` : "none",
-                      }}
-                    />
-
-                    <div
-                      style={{
-                        fontSize: "0.8rem",
-                        marginTop: "8px",
-                        textAlign: "center",
-                        maxWidth: "100%",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        fontWeight: isHovered ? "600" : "normal",
-                        color: isHovered ? color : "#b3b3b3",
-                      }}
-                    >
-                      {servicio.nombre}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "center",
-                gap: "18px",
-                marginTop: "16px",
-                flexWrap: "wrap",
-                fontSize: "0.85rem",
-              }}
-            >
+              {/* Leyenda */}
               <div
                 style={{
                   display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  color: "#b3b3b3",
+                  flexDirection: "column",
+                  gap: "12px",
+                  maxWidth: "300px",
                 }}
               >
-                <div
-                  style={{
-                    width: "12px",
-                    height: "12px",
-                    borderRadius: "50%",
-                    backgroundColor: "#FFD700",
-                  }}
-                />
-                Cantidad de ventas por servicio
+                {dataWithAngles.map((servicio, index) => (
+                  <div
+                    key={index}
+                    onMouseEnter={() => setHoveredIndex(index)}
+                    onMouseLeave={() => setHoveredIndex(null)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "12px",
+                      padding: "10px",
+                      backgroundColor: hoveredIndex === index ? "#262626" : "transparent",
+                      borderRadius: "8px",
+                      cursor: "pointer",
+                      transition: "background 0.2s",
+                      border: hoveredIndex === index ? `2px solid ${servicio.color}` : "2px solid transparent",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "16px",
+                        height: "16px",
+                        borderRadius: "4px",
+                        backgroundColor: servicio.color,
+                        flexShrink: 0,
+                        boxShadow: hoveredIndex === index ? `0 0 10px ${servicio.color}` : "none",
+                      }}
+                    />
+                    <div style={{ flex: 1 }}>
+                      <div
+                        style={{
+                          color: "#fff",
+                          fontSize: "0.9rem",
+                          fontWeight: hoveredIndex === index ? "bold" : "normal",
+                        }}
+                      >
+                        {servicio.nombre}
+                      </div>
+                      <div
+                        style={{
+                          color: "#aaa",
+                          fontSize: "0.8rem",
+                          marginTop: "2px",
+                        }}
+                      >
+                        {servicio.cantidad} ventas • {formatMoney(servicio.total)}
+                      </div>
+                    </div>
+                    <div
+                      style={{
+                        color: servicio.color,
+                        fontSize: "1.1rem",
+                        fontWeight: "bold",
+                      }}
+                    >
+                      {servicio.porcentaje}%
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -518,6 +573,15 @@ const ServiciosVendidosChart = () => {
                         color: "#FFD700",
                       }}
                     >
+                      %
+                    </th>
+                    <th
+                      style={{
+                        padding: "10px",
+                        textAlign: "center",
+                        color: "#FFD700",
+                      }}
+                    >
                       Ventas
                     </th>
                     <th
@@ -541,7 +605,7 @@ const ServiciosVendidosChart = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.map((servicio, index) => (
+                  {dataWithAngles.map((servicio, index) => (
                     <tr
                       key={index}
                       style={{
@@ -558,7 +622,7 @@ const ServiciosVendidosChart = () => {
                       <td style={{ padding: "10px" }}>
                         <span
                           style={{
-                            backgroundColor: COLORS[index % COLORS.length],
+                            backgroundColor: servicio.color,
                             color: "#000",
                             padding: "4px 10px",
                             borderRadius: "6px",
@@ -571,6 +635,16 @@ const ServiciosVendidosChart = () => {
                       </td>
                       <td style={{ padding: "10px", fontWeight: "500" }}>
                         {servicio.nombre}
+                      </td>
+                      <td
+                        style={{
+                          padding: "10px",
+                          textAlign: "center",
+                          color: servicio.color,
+                          fontWeight: "bold",
+                        }}
+                      >
+                        {servicio.porcentaje}%
                       </td>
                       <td
                         style={{
@@ -612,7 +686,7 @@ const ServiciosVendidosChart = () => {
                     }}
                   >
                     <td
-                      colSpan="2"
+                      colSpan="3"
                       style={{ padding: "10px", color: "#FFD700" }}
                     >
                       TOTAL
@@ -625,7 +699,7 @@ const ServiciosVendidosChart = () => {
                         fontSize: "1.05em",
                       }}
                     >
-                      {data.reduce((sum, s) => sum + s.cantidad, 0)}
+                      {totalVentas}
                     </td>
                     <td style={{ padding: "10px" }} />
                     <td
@@ -637,7 +711,7 @@ const ServiciosVendidosChart = () => {
                       }}
                     >
                       {formatMoney(
-                        data.reduce((sum, s) => sum + s.total, 0)
+                        dataWithAngles.reduce((sum, s) => sum + s.total, 0)
                       )}
                     </td>
                   </tr>
