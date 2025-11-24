@@ -1,4 +1,4 @@
-// src/pages/cliente.jsx - VERSIÓN CORREGIDA
+// src/pages/cliente.jsx - AJUSTADO PARA TU API ACTUAL
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -8,25 +8,140 @@ const API_URL = "http://localhost:8000/api";
 
 export default function Cliente() {
   const navigate = useNavigate();
-  const { isAuthenticated, loading } = useAuth(); // ← AGREGAR loading
+  const { isAuthenticated, loading } = useAuth();
   const [barbers, setBarbers] = useState([]);
   const [loadingBarbers, setLoadingBarbers] = useState(true);
+  
+  // ✅ Estado para servicios
+  const [servicios, setServicios] = useState([]);
+  const [loadingServicios, setLoadingServicios] = useState(true);
 
-  // Cargar barberos desde la API (solo los activos, no eliminados)
+  // ✅ Helper para formatear precio
+  const formatearPrecio = (precio) => {
+    if (!precio || precio === 0) return "Consultar";
+    
+    const numero = typeof precio === 'number' ? precio : parseFloat(precio);
+    
+    if (isNaN(numero)) return "Consultar";
+    
+    return new Intl.NumberFormat('es-AR', {
+      style: 'currency',
+      currency: 'ARS',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(numero);
+  };
+
+  // ✅ Helper para formatear duración
+  const formatearDuracion = (duracion) => {
+    if (!duracion) return "";
+    
+    // Si viene como "45 min", extraer el número
+    if (typeof duracion === 'string') {
+      const match = duracion.match(/\d+/);
+      if (match) {
+        duracion = parseInt(match[0]);
+      } else {
+        return duracion; // Devolver tal cual si no se puede parsear
+      }
+    }
+    
+    const minutos = parseInt(duracion);
+    
+    if (isNaN(minutos)) return "";
+    
+    if (minutos < 60) return `${minutos} min`;
+    
+    const horas = Math.floor(minutos / 60);
+    const mins = minutos % 60;
+    
+    if (mins === 0) return `${horas}h`;
+    return `${horas}h ${mins}min`;
+  };
+
+  // ✅ Cargar servicios desde la API
+  useEffect(() => {
+    const fetchServicios = async () => {
+      setLoadingServicios(true);
+      try {
+        console.log('🔄 Cargando servicios desde:', `${API_URL}/servicios/`);
+        const response = await fetch(`${API_URL}/servicios/`);
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log('✅ Datos de servicios recibidos:', data);
+        
+        // La API puede devolver un array directo o un objeto con results
+        const serviciosList = Array.isArray(data) ? data : (data?.results || []);
+        
+        // ✅ Filtrar solo servicios activos (campo 'activo' en tu modelo)
+        const serviciosActivos = serviciosList.filter(s => s.activo === true);
+        
+        console.log(`✅ ${serviciosActivos.length} servicios activos de ${serviciosList.length} totales`);
+        console.log('📋 Servicios activos:', serviciosActivos);
+        
+        setServicios(serviciosActivos);
+        
+      } catch (error) {
+        console.error("❌ Error cargando servicios:", error);
+        
+        // Servicios por defecto en caso de error
+        setServicios([
+          { 
+            id: 1, 
+            nombre: "Corte de cabello", 
+            descripcion: "Asesoría + lavado + styling",
+            precio: "15000",
+            duracion: 60
+          },
+          { 
+            id: 2, 
+            nombre: "Barba clásica", 
+            descripcion: "Toalla caliente + navaja + bálsamo",
+            precio: "8000",
+            duracion: 30
+          },
+          { 
+            id: 3, 
+            nombre: "Afeitado clásico", 
+            descripcion: "Experiencia tradicional con navaja",
+            precio: "6000",
+            duracion: 30
+          },
+          { 
+            id: 4, 
+            nombre: "Combo corte + barba", 
+            descripcion: "Look completo en una sola visita",
+            precio: "20000",
+            duracion: 90
+          }
+        ]);
+      } finally {
+        setLoadingServicios(false);
+      }
+    };
+
+    fetchServicios();
+  }, []);
+
+  // Cargar barberos desde la API
   useEffect(() => {
     const fetchBarbers = async () => {
       setLoadingBarbers(true);
       try {
+        console.log('🔄 Cargando barberos desde:', `${API_URL}/barbers/`);
         const response = await fetch(`${API_URL}/barbers/`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         
-        // Filtrar solo barberos activos (no eliminados)
         const activeBarbers = (data?.results ?? data).filter(b => !b.is_deleted);
+        console.log(`✅ ${activeBarbers.length} barberos activos`);
         setBarbers(activeBarbers);
       } catch (error) {
-        console.error("Error cargando barberos:", error);
-        // En caso de error, mostrar barberos por defecto
+        console.error("❌ Error cargando barberos:", error);
         setBarbers([
           { id: 1, name: "Alex", specialty: "Fade • Clásicos • Estilizado" },
           { id: 2, name: "Bruno", specialty: "Navaja • Barba • Old school" },
@@ -40,9 +155,7 @@ export default function Cliente() {
     fetchBarbers();
   }, []);
 
-  // ✅ CORREGIDO: Handler que espera la carga del contexto
   const handleMiCuenta = () => {
-    // Si el contexto aún está cargando, no hacer nada
     if (loading) {
       console.log('⏳ Esperando verificación de autenticación...');
       return;
@@ -69,7 +182,6 @@ export default function Cliente() {
           <div className="hero__cta">
             <Link to="/reservar" className="btn btn--primary">Reservar turno</Link>
             <a href="#servicios" className="btn btn--ghost">Ver servicios</a>
-            {/* ✅ Mostrar estado de carga en el botón */}
             <button 
               onClick={handleMiCuenta}
               className="btn btn--outline"
@@ -80,8 +192,6 @@ export default function Cliente() {
           </div>
         </div>
       </section>
-
-      {/* ... resto del código igual ... */}
       
       {/* SELLING POINTS */}
       <section className="usp">
@@ -101,43 +211,66 @@ export default function Cliente() {
         </div>
       </section>
 
-      {/* SERVICIOS */}
+      {/* ✅ SERVICIOS - DINÁMICOS DESDE LA API */}
       <section id="servicios" className="services">
         <div className="container">
           <div className="section-head">
             <h2>Servicios</h2>
             <p>Los clásicos de barbería con un toque premium.</p>
           </div>
-          <ul className="services__grid">
-            <li className="card">
-              <div className="card__body">
-                <h4>Corte de cabello</h4>
-                <p>Asesoría + lavado + styling.</p>
-                <span className="price">$</span>
-              </div>
-            </li>
-            <li className="card">
-              <div className="card__body">
-                <h4>Barba clásica</h4>
-                <p>Toalla caliente + navaja + bálsamo.</p>
-                <span className="price">$</span>
-              </div>
-            </li>
-            <li className="card">
-              <div className="card__body">
-                <h4>Afeitado clásico</h4>
-                <p>Experiencia tradicional con navaja.</p>
-                <span className="price">$</span>
-              </div>
-            </li>
-            <li className="card">
-              <div className="card__body">
-                <h4>Combo corte + barba</h4>
-                <p>Look completo en una sola visita.</p>
-                <span className="price">$</span>
-              </div>
-            </li>
-          </ul>
+
+          {loadingServicios ? (
+            <div className="services-loading">
+              <div className="spinner"></div>
+              <p>Cargando servicios disponibles...</p>
+            </div>
+          ) : servicios.length === 0 ? (
+            <div className="services-empty">
+              <div className="empty-icon">✂️</div>
+              <p>Próximamente tendremos servicios disponibles.</p>
+              <p style={{ fontSize: '0.9rem', marginTop: '1rem', color: '#666' }}>
+                Agrega servicios desde el panel de administración.
+              </p>
+            </div>
+          ) : (
+            <ul className="services__grid">
+              {servicios.map((servicio) => (
+                <li key={servicio.id} className="card">
+                  {/* ✅ Mostrar imagen si existe */}
+                  {servicio.imagen && (
+                    <div className="card__image">
+                      <img 
+                        src={servicio.imagen} 
+                        alt={servicio.nombre}
+                        onError={(e) => {
+                          console.log('Error cargando imagen:', servicio.imagen);
+                          e.target.style.display = 'none';
+                        }}
+                      />
+                    </div>
+                  )}
+                  
+                  <div className="card__body">
+                    <h4>{servicio.nombre}</h4>
+                    <p>{servicio.descripcion || "Servicio de barbería profesional"}</p>
+                    
+                    <div className="card__footer">
+                      <span className="price">
+                        {formatearPrecio(servicio.precio)}
+                      </span>
+                      
+                      {servicio.duracion && (
+                        <span className="duration">
+                          ⏱️ {formatearDuracion(servicio.duracion)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+
           <div className="center">
             <Link to="/reservar" className="btn btn--primary btn--lg">Reservar ahora</Link>
           </div>

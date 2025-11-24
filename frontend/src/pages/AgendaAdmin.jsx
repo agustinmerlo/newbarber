@@ -1,5 +1,6 @@
 // src/pages/AgendaAdmin.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import './AgendaAdmin.css';
 
 const API_URL = "http://localhost:8000/api";
 

@@ -15,7 +15,6 @@ const sections = [
   { name: "Caja", icon: "💵" },
   { name: "Barberos", icon: "✂️" },
   { name: "Servicios", icon: "🧴" },
-  { name: "Proveedores", icon: "📦" },
   { name: "Empleados", icon: "👥" },
   { name: "Reservas", icon: "📋" },
   { name: "Agenda", icon: "📅" },

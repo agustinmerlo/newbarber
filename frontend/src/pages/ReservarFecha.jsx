@@ -53,6 +53,13 @@ export default function ReservarFecha({
     return 60;
   };
 
+  // ✅ NUEVA FUNCIÓN: Verificar si una fecha es domingo
+  const esDomingo = (fechaString) => {
+    if (!fechaString) return false;
+    const fecha = new Date(`${fechaString}T00:00:00`);
+    return fecha.getDay() === 0; // 0 = Domingo
+  };
+
   // -----------------------------
   // Servicios
   // -----------------------------
@@ -194,12 +201,18 @@ export default function ReservarFecha({
       return;
     }
 
+    // ✅ VALIDACIÓN: Si es domingo, no cargar horarios
+    if (esDomingo(fechaSeleccionada)) {
+      console.log("⚠️ Fecha seleccionada es domingo, no hay horarios disponibles");
+      setHorariosDisponibles([]);
+      return;
+    }
+
     let cancel = false;
     setCargandoHorarios(true);
 
     console.log(`🔄 Cargando horarios para fecha: ${fechaSeleccionada}, barbero: ${barberoSeleccionado.id}`);
 
-    // ✅ URL del backend que ya implementaste
     const url = `${API_BASE}/api/horarios/?fecha=${fechaSeleccionada}&barbero=${barberoSeleccionado.id}&duracion_min=${duracionTotal}`;
 
     fetch(url)
@@ -217,7 +230,6 @@ export default function ReservarFecha({
 
         console.log(`✅ Datos recibidos del backend:`, data);
 
-        // El backend devuelve: { fecha, barbero, intervalo_min, slots: [{hora, disponible}] }
         const slots = data.slots || [];
         
         if (slots.length === 0) {
@@ -233,16 +245,13 @@ export default function ReservarFecha({
         
         console.error(`❌ Error cargando horarios:`, error);
         
-        // ⚠️ FALLBACK: Generar horarios manuales si falla el backend
         console.log("⚠️ Generando horarios de fallback...");
         
         const horariosFallback = [
-          // Mañana: 9-12
           { hora: "09:00", disponible: true },
           { hora: "10:00", disponible: true },
           { hora: "11:00", disponible: true },
           { hora: "12:00", disponible: true },
-          // Tarde: 17-21
           { hora: "17:00", disponible: true },
           { hora: "18:00", disponible: true },
           { hora: "19:00", disponible: true },
@@ -275,6 +284,21 @@ export default function ReservarFecha({
     return hoy.toISOString().split("T")[0];
   };
 
+  // ✅ NUEVA FUNCIÓN: Manejar cambio de fecha con validación de domingo
+  const handleFechaChange = (e) => {
+    const nuevaFecha = e.target.value;
+    
+    if (esDomingo(nuevaFecha)) {
+      alert("❌ No se pueden hacer reservas los domingos. Por favor selecciona otro día.");
+      setFechaSeleccionada("");
+      setHorarioSeleccionado("");
+      return;
+    }
+    
+    setFechaSeleccionada(nuevaFecha);
+    setHorarioSeleccionado("");
+  };
+
   // -----------------------------
   // Confirmar (pasa datos a siguiente paso)
   // -----------------------------
@@ -282,6 +306,12 @@ export default function ReservarFecha({
     if (!fechaSeleccionada) return alert("Por favor selecciona una fecha");
     if (!barberoSeleccionado) return alert("Por favor selecciona un barbero");
     if (!horarioSeleccionado) return alert("Por favor selecciona un horario");
+
+    // ✅ Validación adicional antes de confirmar
+    if (esDomingo(fechaSeleccionada)) {
+      alert("❌ No se pueden hacer reservas los domingos");
+      return;
+    }
 
     const reservaData = {
       servicios,
@@ -372,10 +402,7 @@ export default function ReservarFecha({
                 type="date"
                 className="input-fecha"
                 value={fechaSeleccionada}
-                onChange={(e) => {
-                  setFechaSeleccionada(e.target.value);
-                  setHorarioSeleccionado("");
-                }}
+                onChange={handleFechaChange}
                 min={getFechaMinima()}
                 max={getFechaMaxima()}
                 disabled={servicios.length === 0}
@@ -390,6 +417,10 @@ export default function ReservarFecha({
                   })}
                 </p>
               )}
+              {/* ✅ MENSAJE DE ADVERTENCIA */}
+              <p style={{ fontSize: '0.85rem', color: '#ff9800', marginTop: '0.5rem' }}>
+                ⚠️ No se aceptan reservas los domingos
+              </p>
             </section>
 
             {/* SELECCIÓN DE BARBERO */}
@@ -437,6 +468,10 @@ export default function ReservarFecha({
               <h2>🕒 Horarios Disponibles</h2>
               {!fechaSeleccionada || !barberoSeleccionado ? (
                 <p className="info-text">Selecciona una fecha y un barbero para ver horarios</p>
+              ) : esDomingo(fechaSeleccionada) ? (
+                <p className="info-text" style={{ color: '#ff5252' }}>
+                  ❌ No hay horarios disponibles los domingos
+                </p>
               ) : cargandoHorarios ? (
                 <p className="loading-text">Cargando horarios...</p>
               ) : horariosDisponibles.length === 0 ? (

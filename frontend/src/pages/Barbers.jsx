@@ -22,6 +22,12 @@ async function listBarbers({ includeDeleted = false } = {}) {
   return safeJson(res);
 }
 
+async function listDeletedBarbers() {
+  const res = await fetch(`${API_BASE}/eliminados/`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return safeJson(res);
+}
+
 async function softDeleteBarber(id) {
   const res = await fetch(`${API_BASE}/${id}/`, { method: "DELETE" });
   if (!(res.status === 204 || res.ok)) throw new Error(`HTTP ${res.status}`);
@@ -112,8 +118,16 @@ const Barbers = () => {
     setLoading(true);
     setError("");
     try {
-      const data = await listBarbers({ includeDeleted: showDeleted });
-      setRows(data?.results ?? data);
+      let data;
+      if (showDeleted) {
+        // Cargar SOLO eliminados
+        data = await listDeletedBarbers();
+        setRows(data?.results ?? data);
+      } else {
+        // Cargar SOLO activos
+        data = await listBarbers({ includeDeleted: false });
+        setRows(data?.results ?? data);
+      }
     } catch (e) {
       setError(e.message || "Error cargando barberos");
     } finally {
@@ -127,9 +141,11 @@ const Barbers = () => {
   }, [showDeleted]);
 
   const onDelete = async (id) => {
-    if (!window.confirm("¿Eliminar este barbero?")) return;
+    if (!window.confirm("¿Eliminar este barbero? También se degradará a 'Cliente' en empleados.")) return;
     try {
       await softDeleteBarber(id);
+      setSuccessMsg("✅ Barbero eliminado y degradado a Cliente");
+      setTimeout(() => setSuccessMsg(""), 3000);
       reload();
     } catch (e) {
       setError(e.message || "Error eliminando");
@@ -137,8 +153,11 @@ const Barbers = () => {
   };
 
   const onRestore = async (id) => {
+    if (!window.confirm("¿Restaurar este barbero? También se le asignará el rol 'Barbero' en empleados.")) return;
     try {
       await restoreBarber(id);
+      setSuccessMsg("✅ Barbero restaurado y rol actualizado");
+      setTimeout(() => setSuccessMsg(""), 3000);
       reload();
     } catch (e) {
       setError(e.message || "Error restaurando");
@@ -266,46 +285,71 @@ const Barbers = () => {
         </div>
 
         <div className="barbers-actions">
-          <label className="checkbox">
+          <label className="checkbox" style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '8px 16px',
+            background: showDeleted ? '#ef4444' : '#374151',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            fontWeight: showDeleted ? '600' : '400'
+          }}>
             <input
               type="checkbox"
               checked={showDeleted}
               onChange={(e) => setShowDeleted(e.target.checked)}
+              style={{cursor: 'pointer'}}
             />
-            Mostrar eliminados
+            <span>{showDeleted ? '🗑️ Mostrando eliminados' : '👥 Mostrar eliminados'}</span>
           </label>
-          <button
-            className="btn primary"
-            onClick={() => {
-              setForm(emptyForm);
-              setError('');
-              setSuccessMsg('');
-              setOpen(true);
-            }}
-          >
-            + Agregar Barbero
-          </button>
+          
+          {!showDeleted && (
+            <button
+              className="btn primary"
+              onClick={() => {
+                setForm(emptyForm);
+                setError('');
+                setSuccessMsg('');
+                setOpen(true);
+              }}
+            >
+              + Agregar Barbero
+            </button>
+          )}
         </div>
       </div>
 
       {error && <div className="alert error">{error}</div>}
+      {successMsg && <div className="alert success">{successMsg}</div>}
       
       {loading ? (
         <div className="loading">Cargando…</div>
       ) : rows.length === 0 ? (
         <div className="empty-state">
-          <div className="empty-icon">✂️</div>
-          <h3>No hay barberos registrados</h3>
-          <p>Comienza agregando tu primer barbero al equipo</p>
-          <button
-            className="btn primary"
-            onClick={() => {
-              setForm(emptyForm);
-              setOpen(true);
-            }}
-          >
-            + Agregar primer barbero
-          </button>
+          <div className="empty-icon">
+            {showDeleted ? '🗑️' : '✂️'}
+          </div>
+          <h3>
+            {showDeleted ? 'No hay barberos eliminados' : 'No hay barberos registrados'}
+          </h3>
+          <p>
+            {showDeleted 
+              ? 'Los barberos eliminados aparecerán aquí' 
+              : 'Comienza agregando tu primer barbero al equipo'}
+          </p>
+          {!showDeleted && (
+            <button
+              className="btn primary"
+              onClick={() => {
+                setForm(emptyForm);
+                setOpen(true);
+              }}
+            >
+              + Agregar primer barbero
+            </button>
+          )}
         </div>
       ) : (
         <div className="barbers-grid">
@@ -345,7 +389,11 @@ const Barbers = () => {
                     <button 
                       className="icon-btn restore" 
                       onClick={() => onRestore(b.id)}
-                      title="Restaurar"
+                      title="Restaurar barbero y rol"
+                      style={{
+                        background: '#10b981',
+                        color: 'white'
+                      }}
                     >
                       <RestoreIcon />
                     </button>
@@ -374,6 +422,22 @@ const Barbers = () => {
                   <p className="barber-card-schedule">
                     <span className="label">🕐</span> {b.work_schedule}
                   </p>
+                )}
+                
+                {/* Badge de estado */}
+                {b.is_deleted && (
+                  <div style={{
+                    marginTop: '12px',
+                    padding: '6px 12px',
+                    background: '#ef4444',
+                    color: 'white',
+                    borderRadius: '6px',
+                    fontSize: '0.85em',
+                    fontWeight: '600',
+                    textAlign: 'center'
+                  }}>
+                    🗑️ Eliminado
+                  </div>
                 )}
               </div>
             </div>
@@ -526,4 +590,4 @@ const Barbers = () => {
   );
 };
 
-export default Barbers;
+export default Barbers; 

@@ -17,6 +17,7 @@ class ServicioSerializer(serializers.ModelSerializer):
             'precio',
             'duracion',
             'duracion_display',  # Campo adicional para el frontend
+            'imagen',  # ← AGREGADO
             'activo',
             'creado_en',
             'actualizado_en'
@@ -50,8 +51,21 @@ class ServicioSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         """
         Personaliza la respuesta para que el frontend vea 'duracion' como string
+        y la imagen como URL completa
         """
         data = super().to_representation(instance)
+        
         # Convertir duracion a formato "X min" para compatibilidad con React
         data['duracion'] = f"{instance.duracion} min"
+        
+        # Convertir imagen a URL completa si existe
+        if instance.imagen:
+            request = self.context.get('request')
+            if request is not None:
+                data['imagen'] = request.build_absolute_uri(instance.imagen.url)
+            else:
+                data['imagen'] = instance.imagen.url
+        else:
+            data['imagen'] = None
+        
         return data

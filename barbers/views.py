@@ -134,20 +134,36 @@ class BarberViewSet(viewsets.ModelViewSet):
         """Eliminar (soft delete) - NO elimina el usuario"""
         barber = self.get_object()
         barber.soft_delete()
+        
+        # ✅ También degradar el usuario a 'cliente' automáticamente
+        if barber.user and hasattr(barber.user, 'profile'):
+            barber.user.profile.role = 'cliente'
+            barber.user.profile.save()
+        
         return Response(
-            {'message': 'Barbero desactivado (soft delete)'},
+            {'message': 'Barbero desactivado y degradado a cliente'},
             status=status.HTTP_204_NO_CONTENT
         )
 
     @action(detail=True, methods=["post"])
     def restore(self, request, pk=None):
-        """Restaurar un barbero eliminado"""
+        """
+        Restaurar un barbero eliminado
+        ✅ También restaura el rol 'barbero' en el usuario
+        """
         try:
             barber = Barber.all_objects.get(pk=pk)
             barber.restore()
+            
+            # ✅ Restaurar rol de barbero
+            if barber.user and hasattr(barber.user, 'profile'):
+                barber.user.profile.role = 'barbero'
+                barber.user.profile.activo = True
+                barber.user.profile.save()
+            
             serializer = self.get_serializer(barber)
             return Response({
-                'message': 'Barbero restaurado',
+                'message': 'Barbero restaurado y rol actualizado',
                 'barber': serializer.data
             }, status=status.HTTP_200_OK)
         except Barber.DoesNotExist:
@@ -155,6 +171,19 @@ class BarberViewSet(viewsets.ModelViewSet):
                 {"error": "Barbero no encontrado"},
                 status=status.HTTP_404_NOT_FOUND
             )
+
+    @action(detail=False, methods=["get"], url_path="eliminados")
+    def eliminados(self, request):
+        """
+        ✅ NUEVO: Listar solo barberos eliminados
+        GET /api/barbers/eliminados/
+        """
+        queryset = Barber.all_objects.filter(is_deleted=True)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({
+            'count': queryset.count(),
+            'results': serializer.data
+        }, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=["get"], url_path="all")
     def all(self, request):

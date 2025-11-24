@@ -1,9 +1,24 @@
-/* src/pages/ReservasPendientes.css */
+/* src/pages/ReservasPendientes.css - TEMA OSCURO */
+
+:root {
+  --bg-dark: #0a0a0a;
+  --card-bg: #1a1a1a;
+  --card-hover: #252525;
+  --border: #404040;
+  --text-white: #ffffff;
+  --gold: #ffc107;
+  --green: #4caf50;
+  --red: #f44336;
+  --orange: #ff9800;
+  --blue: #2196F3;
+}
 
 .reservas-admin-container {
   padding: 20px;
   max-width: 1400px;
   margin: 0 auto;
+  background: var(--bg-dark);
+  min-height: 100vh;
 }
 
 /* FILTROS */
@@ -16,8 +31,9 @@
 
 .filtro-btn {
   padding: 12px 24px;
-  border: 2px solid #ddd;
-  background: white;
+  border: 2px solid var(--border);
+  background: var(--card-bg);
+  color: var(--text-white);
   border-radius: 8px;
   cursor: pointer;
   font-size: 15px;
@@ -29,18 +45,19 @@
 }
 
 .filtro-btn:hover {
-  border-color: #c9a227;
+  border-color: var(--gold);
   transform: translateY(-2px);
+  background: var(--card-hover);
 }
 
 .filtro-btn.active {
-  background: #c9a227;
-  color: white;
-  border-color: #c9a227;
+  background: var(--gold);
+  color: #000;
+  border-color: var(--gold);
 }
 
 .badge-filtro {
-  background: #ff4444;
+  background: var(--red);
   color: white;
   padding: 2px 8px;
   border-radius: 12px;
@@ -55,22 +72,24 @@
 }
 
 .reserva-card {
-  background: white;
+  background: var(--card-bg);
   border-radius: 12px;
   padding: 20px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-  border-left: 4px solid #ddd;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  border-left: 4px solid var(--border);
   transition: all 0.3s;
+  border: 2px solid var(--border);
 }
 
 .reserva-card:hover {
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.6);
   transform: translateY(-2px);
+  border-color: var(--gold);
 }
 
-.reserva-card.estado-pendiente { border-left-color: #ff9800; }
-.reserva-card.estado-confirmada { border-left-color: #4caf50; }
-.reserva-card.estado-rechazada { border-left-color: #f44336; }
+.reserva-card.estado-pendiente { border-left-color: var(--orange); }
+.reserva-card.estado-confirmada { border-left-color: var(--green); }
+.reserva-card.estado-rechazada { border-left-color: var(--red); }
 
 /* HEADER DE LA TARJETA */
 .reserva-header {
@@ -79,49 +98,52 @@
   align-items: center;
   margin-bottom: 20px;
   padding-bottom: 15px;
-  border-bottom: 2px solid #f0f0f0;
+  border-bottom: 2px solid var(--border);
 }
 
 .reserva-header h3 {
   font-size: 18px;
   margin: 0;
-  color: #333;
+  color: var(--text-white) !important;
+  font-weight: 700;
 }
 
 .estado-badge {
   padding: 6px 12px;
   border-radius: 20px;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
+  color: white !important;
 }
 
-.estado-badge.pendiente { background: #fff3cd; color: #856404; }
-.estado-badge.confirmada { background: #d4edda; color: #155724; }
-.estado-badge.rechazada { background: #f8d7da; color: #721c24; }
+.estado-badge.pendiente { background: var(--orange); }
+.estado-badge.confirmada { background: var(--green); }
+.estado-badge.rechazada { background: var(--red); }
 
 /* SECCIONES */
 .reserva-seccion { 
   margin-bottom: 15px;
-  opacity: 1 !important; /* ✅ Forzar opacidad completa */
+  opacity: 1 !important;
 }
 
 .reserva-seccion h4 {
   font-size: 14px;
-  color: #666;
+  color: var(--gold) !important;
   margin-bottom: 10px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   opacity: 1 !important;
+  font-weight: 700;
 }
 
 .reserva-seccion p {
   margin: 5px 0;
   font-size: 14px;
-  color: #333 !important; /* ✅ Texto más oscuro */
+  color: var(--text-white) !important;
   opacity: 1 !important;
+  font-weight: 600;
 }
 
-/* ✅ ESTILOS ESPECÍFICOS PARA ICONOS Y TEXTO */
 .reserva-seccion .icon {
   opacity: 1 !important;
 }
@@ -129,7 +151,7 @@
 .reserva-seccion strong,
 .reserva-seccion span,
 .reserva-seccion div {
-  color: #333 !important;
+  color: var(--text-white) !important;
   opacity: 1 !important;
 }
 
@@ -139,19 +161,19 @@
   grid-template-columns: repeat(2, 1fr);
   gap: 10px;
   font-size: 14px;
-  opacity: 1 !important; /* ✅ Forzar visibilidad */
+  opacity: 1 !important;
 }
 
 .detalle-grid .label {
-  color: #666 !important;
-  font-weight: 600;
+  color: var(--gold) !important;
+  font-weight: 700;
   opacity: 1 !important;
 }
 
 .detalle-grid .valor {
-  color: #111 !important;
+  color: var(--text-white) !important;
   opacity: 1 !important;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .detalle-item {
@@ -163,14 +185,13 @@
   opacity: 1 !important;
 }
 
-/* ✅ EMAIL Y TELÉFONO */
 .reserva-seccion p:has(.icon),
 .reserva-seccion p > span {
-  color: #333 !important;
+  color: var(--text-white) !important;
   opacity: 1 !important;
 }
 
-/* SERVICIOS (versión detallada) */
+/* SERVICIOS */
 .servicios-lista {
   list-style: none;
   padding: 0;
@@ -186,8 +207,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  background: #f8f9fa;
-  border: 1px solid #eee;
+  background: var(--card-hover);
+  border: 2px solid var(--border);
   border-radius: 8px;
   padding: 10px 12px;
   opacity: 1 !important;
@@ -202,32 +223,33 @@
 }
 
 .servicio-nombre { 
-  font-weight: 600; 
-  color: #333 !important;
+  font-weight: 700; 
+  color: var(--text-white) !important;
   opacity: 1 !important;
 }
 
 .servicio-cantidad { 
-  color: #666 !important; 
-  font-weight: 500;
+  color: var(--text-white) !important; 
+  font-weight: 600;
   opacity: 1 !important;
 }
 
 .servicio-duracion { 
-  color: #888 !important; 
+  color: #aaa !important; 
   font-size: 13px;
   opacity: 1 !important;
 }
 
 .servicio-precio {
   font-weight: 700;
-  color: #333 !important;
+  color: var(--gold) !important;
   white-space: nowrap;
   opacity: 1 !important;
+  font-size: 16px;
 }
 
 .servicio-subtotal {
-  color: #666 !important;
+  color: var(--text-white) !important;
   font-weight: 600;
   margin-left: 6px;
   opacity: 1 !important;
@@ -235,10 +257,11 @@
 
 /* PAGO */
 .pago-section {
-  background: #f8f9fa;
+  background: var(--card-hover);
   padding: 15px;
   border-radius: 8px;
   opacity: 1 !important;
+  border: 2px solid var(--border);
 }
 
 .pago-detalle { 
@@ -257,42 +280,49 @@
 
 .pago-item span,
 .pago-item strong {
-  color: #333 !important;
+  color: var(--text-white) !important;
   opacity: 1 !important;
+  font-weight: 600;
 }
 
 .pago-item.total strong { 
-  font-size: 16px;
-  color: #111 !important;
+  font-size: 18px;
+  color: var(--text-white) !important;
+  font-weight: 900;
 }
 
 .pago-item.seña {
   padding-top: 10px;
-  border-top: 2px dashed #ddd;
+  border-top: 2px dashed var(--border);
 }
 
 .pago-item .highlight {
-  color: #c9a227 !important;
-  font-size: 18px;
+  color: var(--gold) !important;
+  font-size: 20px;
   opacity: 1 !important;
-  font-weight: 700;
+  font-weight: 900;
 }
 
 /* BOTONES */
 .btn-ver-comprobante {
   width: 100%;
-  padding: 10px;
-  background: #2196f3;
+  padding: 12px;
+  background: var(--blue);
   color: white !important;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
-  font-weight: 600;
+  font-weight: 700;
   transition: all 0.2s;
   opacity: 1 !important;
+  font-size: 14px;
+  margin-top: 15px;
 }
 
-.btn-ver-comprobante:hover { background: #1976d2; }
+.btn-ver-comprobante:hover { 
+  background: #1976d2;
+  transform: translateY(-2px);
+}
 
 .reserva-acciones {
   display: flex;
@@ -303,33 +333,46 @@
 .btn-confirmar,
 .btn-rechazar {
   flex: 1;
-  padding: 10px;
+  padding: 12px;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
-  font-weight: 600;
+  font-weight: 700;
   transition: all 0.2s;
   color: white !important;
   opacity: 1 !important;
+  font-size: 14px;
 }
 
-.btn-confirmar { background: #4caf50; }
-.btn-confirmar:hover { background: #45a049; }
+.btn-confirmar { 
+  background: var(--green);
+}
 
-.btn-rechazar { background: #f44336; }
-.btn-rechazar:hover { background: #da190b; }
+.btn-confirmar:hover { 
+  background: #45a049;
+  transform: translateY(-2px);
+}
+
+.btn-rechazar { 
+  background: var(--red);
+}
+
+.btn-rechazar:hover { 
+  background: #da190b;
+  transform: translateY(-2px);
+}
 
 /* FOOTER */
 .reserva-footer {
   margin-top: 15px;
   padding-top: 10px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--border);
   text-align: center;
   opacity: 1 !important;
 }
 
 .reserva-footer small { 
-  color: #999 !important; 
+  color: #aaa !important; 
   font-size: 12px;
   opacity: 1 !important;
 }
@@ -338,15 +381,16 @@
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.8);
+  background: rgba(0,0,0,0.9);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 10000;
+  backdrop-filter: blur(5px);
 }
 
 .modal-comprobante {
-  background: #fff;
+  background: var(--card-bg);
   border-radius: 12px;
   padding: 30px;
   max-width: 800px;
@@ -354,13 +398,14 @@
   max-height: 90vh;
   overflow-y: auto;
   position: relative;
+  border: 2px solid var(--border);
 }
 
 .btn-cerrar-modal {
   position: absolute;
   top: 15px;
   right: 15px;
-  background: #f44336;
+  background: var(--red);
   color: white;
   border: none;
   width: 35px;
@@ -369,6 +414,10 @@
   cursor: pointer;
   font-size: 20px;
   font-weight: bold;
+}
+
+.btn-cerrar-modal:hover {
+  background: #da190b;
 }
 
 .comprobante-info { 
@@ -385,13 +434,15 @@
 
 .info-row strong { 
   width: 130px; 
-  color: #444 !important;
+  color: var(--gold) !important;
   opacity: 1 !important;
+  font-weight: 700;
 }
 
 .info-row span {
-  color: #333 !important;
+  color: var(--text-white) !important;
   opacity: 1 !important;
+  font-weight: 600;
 }
 
 .comprobante-imagen-container { 
@@ -403,28 +454,37 @@
   max-width: 100%;
   max-height: 500px;
   border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  border: 2px solid var(--border);
 }
 
-.modal-acciones { margin-top: 30px; }
+.modal-acciones { 
+  margin-top: 30px;
+}
 
 .rechazo-section label {
   display: block;
   margin-bottom: 8px;
-  font-weight: 600;
-  color: #333 !important;
+  font-weight: 700;
+  color: var(--gold) !important;
   opacity: 1 !important;
 }
 
 .rechazo-section textarea {
   width: 100%;
-  padding: 10px;
-  border: 2px solid #ddd;
-  border-radius: 6px;
+  padding: 12px;
+  border: 2px solid var(--border);
+  border-radius: 8px;
   font-family: inherit;
   resize: vertical;
-  color: #333 !important;
+  color: var(--text-white) !important;
+  background: var(--card-hover);
   opacity: 1 !important;
+  font-weight: 600;
+}
+
+.rechazo-section textarea::placeholder {
+  color: #888;
 }
 
 .modal-botones {
@@ -440,40 +500,88 @@
   border: none;
   border-radius: 8px;
   cursor: pointer;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 15px;
   transition: all 0.2s;
   color: white !important;
   opacity: 1 !important;
 }
 
-.btn-modal-confirmar { background: #4caf50; }
-.btn-modal-rechazar { background: #f44336; }
+.btn-modal-confirmar { 
+  background: var(--green);
+}
+
+.btn-modal-confirmar:hover {
+  background: #45a049;
+  transform: translateY(-2px);
+}
+
+.btn-modal-rechazar { 
+  background: var(--red);
+}
+
+.btn-modal-rechazar:hover {
+  background: #da190b;
+  transform: translateY(-2px);
+}
 
 /* ESTADOS VACÍOS */
 .loading, .empty-state {
   text-align: center;
   padding: 60px 20px;
-  color: #999 !important;
+  color: var(--text-white) !important;
   font-size: 16px;
   opacity: 1 !important;
+  background: var(--card-bg);
+  border-radius: 12px;
+  border: 2px dashed var(--border);
 }
 
-/* ✅ FORZAR VISIBILIDAD EN TODOS LOS TEXTOS DE LA CARD */
-.reserva-card * {
-  opacity: 1 !important;
-}
-
+/* FORZAR VISIBILIDAD TOTAL */
+.reserva-card *,
 .reserva-card p,
 .reserva-card span,
 .reserva-card strong,
-.reserva-card div {
-  color: #333 !important;
+.reserva-card div,
+.reserva-card h3,
+.reserva-card h4 {
+  opacity: 1 !important;
+}
+
+/* SCROLLBAR */
+.modal-comprobante::-webkit-scrollbar {
+  width: 10px;
+}
+
+.modal-comprobante::-webkit-scrollbar-track {
+  background: var(--card-bg);
+  border-radius: 10px;
+}
+
+.modal-comprobante::-webkit-scrollbar-thumb {
+  background: var(--gold);
+  border-radius: 10px;
+}
+
+.modal-comprobante::-webkit-scrollbar-thumb:hover {
+  background: #ffca28;
 }
 
 /* RESPONSIVE */
 @media (max-width: 768px) {
-  .reservas-grid { grid-template-columns: 1fr; }
-  .modal-comprobante { padding: 20px; }
-  .modal-botones { flex-direction: column; }
+  .reservas-grid { 
+    grid-template-columns: 1fr;
+  }
+  
+  .modal-comprobante { 
+    padding: 20px;
+  }
+  
+  .modal-botones { 
+    flex-direction: column;
+  }
+  
+  .detalle-grid {
+    grid-template-columns: 1fr;
+  }
 }

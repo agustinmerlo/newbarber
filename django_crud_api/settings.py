@@ -90,9 +90,9 @@ WSGI_APPLICATION = 'django_crud_api.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'barber_clase_v2',
+        'NAME': 'barber_clase_v',
         'USER': 'root',
-        'PASSWORD': '12345678',
+        'PASSWORD': 'Fabri_87',
         'HOST': 'localhost',
         'PORT': '3306',
     }
@@ -120,9 +120,10 @@ USE_TZ = True
 # Archivos estáticos
 # -------------------------------------------------------------------
 STATIC_URL = 'static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')  # Para producción
 
 # -------------------------------------------------------------------
-# Archivos de media (ej. comprobantes, fotos)
+# Archivos de media (ej. comprobantes, fotos de servicios)
 # -------------------------------------------------------------------
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')

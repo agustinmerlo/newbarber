@@ -7,7 +7,14 @@ import "./Serviciosadmin.css";
 const API_ROOT = process.env.REACT_APP_API_BASE || "http://localhost:8000";
 const API_BASE = `${API_ROOT}/api/servicios`;
 
-// Función para obtener imagen según nombre del servicio
+// Función para convertir URLs relativas a absolutas
+const toAbsoluteURL = (url) => {
+  if (!url) return "";
+  if (url.startsWith("http")) return url;
+  return `${API_ROOT}${url.startsWith("/") ? "" : "/"}${url}`;
+};
+
+// Función para obtener imagen según nombre del servicio (SOLO como fallback)
 const getImageForService = (nombre) => {
   const lower = (nombre || "").toLowerCase();
   if (lower.includes("corte")) return "/assets/corte.png";
@@ -38,11 +45,10 @@ async function deleteService(id) {
   if (!(res.status === 204 || res.ok)) throw new Error(`HTTP ${res.status}`);
 }
 
-async function createService(payload) {
+async function createService(formData) {
   const res = await fetch(`${API_BASE}/`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: formData, // Enviamos FormData directamente, sin Content-Type
   });
   if (!res.ok) {
     const errorText = await res.text();
@@ -51,11 +57,10 @@ async function createService(payload) {
   return safeJson(res);
 }
 
-async function updateService(id, payload) {
+async function updateService(id, formData) {
   const res = await fetch(`${API_BASE}/${id}/`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: formData, // Enviamos FormData directamente
   });
   if (!res.ok) {
     const errorText = await res.text();
@@ -91,6 +96,8 @@ const Services = () => {
       nombre: "",
       duracion: "",
       precio: "",
+      imagen: null,
+      imagenPreview: "",
     }),
     []
   );
@@ -104,7 +111,7 @@ const Services = () => {
       const data = await listServices();
       const list = (data?.results ?? data).map((s) => ({
         ...s,
-        imagen: getImageForService(s.nombre), // Asigna imagen según nombre
+        imagen: s.imagen ? toAbsoluteURL(s.imagen) : getImageForService(s.nombre),
       }));
       setRows(list);
     } catch (e) {
@@ -129,6 +136,30 @@ const Services = () => {
     }
   };
 
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Validar tipo de archivo
+      if (!file.type.startsWith('image/')) {
+        setError('Por favor selecciona una imagen válida');
+        return;
+      }
+      
+      // Validar tamaño (máximo 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        setError('La imagen no debe superar los 5MB');
+        return;
+      }
+
+      setForm({
+        ...form,
+        imagen: file,
+        imagenPreview: URL.createObjectURL(file),
+      });
+      setError("");
+    }
+  };
+
   const onSubmit = async (e) => {
     e.preventDefault();
     setError("");
@@ -145,19 +176,24 @@ const Services = () => {
       duracionNumero = 60;
     }
 
-    const payload = {
-      nombre: form.nombre.trim(),
-      descripcion: "",
-      duracion: duracionNumero,
-      precio: Number(form.precio),
-      activo: true,
-    };
+    // Crear FormData para enviar archivos
+    const formData = new FormData();
+    formData.append('nombre', form.nombre.trim());
+    formData.append('descripcion', '');
+    formData.append('duracion', duracionNumero);
+    formData.append('precio', Number(form.precio));
+    formData.append('activo', true);
+    
+    // Solo agregar imagen si se seleccionó una nueva
+    if (form.imagen instanceof File) {
+      formData.append('imagen', form.imagen);
+    }
 
     try {
       if (form.id) {
-        await updateService(form.id, payload);
+        await updateService(form.id, formData);
       } else {
-        await createService(payload);
+        await createService(formData);
       }
       setOpen(false);
       setForm(emptyForm);
@@ -173,6 +209,8 @@ const Services = () => {
       nombre: row.nombre || "",
       duracion: row.duracion?.toString?.() || "",
       precio: row.precio?.toString?.() || "",
+      imagen: null,
+      imagenPreview: row.imagen || "",
     });
     setOpen(true);
   };
@@ -226,7 +264,12 @@ const Services = () => {
                   <img
                     src={service.imagen}
                     alt={service.nombre}
-                    onError={(e) => (e.currentTarget.src = "/assets/default-service.png")}
+                    onError={(e) => {
+                      const fallback = getImageForService(service.nombre);
+                      if (e.currentTarget.src !== fallback) {
+                        e.currentTarget.src = fallback;
+                      }
+                    }}
                   />
                 </div>
                 <div className="service-card-actions">
@@ -262,6 +305,70 @@ const Services = () => {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h2>{form.id ? "Editar Servicio" : "Agregar Servicio"}</h2>
             <form onSubmit={onSubmit} className="form-grid">
+              
+              {/* Imagen */}
+              <label style={{ gridColumn: '1 / -1' }}>
+                <span>Imagen del Servicio</span>
+                <div style={{ 
+                  border: '2px dashed #444', 
+                  borderRadius: '8px', 
+                  padding: '20px',
+                  textAlign: 'center',
+                  marginTop: '8px',
+                  background: '#1a1a1a'
+                }}>
+                  {form.imagenPreview ? (
+                    <div style={{ position: 'relative' }}>
+                      <img 
+                        src={form.imagenPreview} 
+                        alt="Preview" 
+                        style={{ 
+                          maxWidth: '200px', 
+                          maxHeight: '200px',
+                          borderRadius: '8px',
+                          marginBottom: '10px'
+                        }} 
+                      />
+                      <br />
+                      <label 
+                        htmlFor="imagen-input" 
+                        style={{ 
+                          cursor: 'pointer',
+                          color: '#c9a227',
+                          textDecoration: 'underline'
+                        }}
+                      >
+                        📷 Cambiar imagen
+                      </label>
+                    </div>
+                  ) : (
+                    <label 
+                      htmlFor="imagen-input" 
+                      style={{ 
+                        cursor: 'pointer',
+                        display: 'block',
+                        padding: '20px'
+                      }}
+                    >
+                      <div style={{ fontSize: '48px', marginBottom: '10px' }}>📷</div>
+                      <div style={{ color: '#c9a227', fontWeight: 'bold' }}>
+                        Haz clic para seleccionar una imagen
+                      </div>
+                      <div style={{ color: '#888', fontSize: '0.85em', marginTop: '5px' }}>
+                        JPG, PNG o GIF (máx. 5MB)
+                      </div>
+                    </label>
+                  )}
+                  <input
+                    id="imagen-input"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageChange}
+                    style={{ display: 'none' }}
+                  />
+                </div>
+              </label>
+
               <label>
                 <span>Nombre del Servicio *</span>
                 <input
@@ -271,9 +378,6 @@ const Services = () => {
                   placeholder="Ej: Corte Clásico"
                   required
                 />
-                <small style={{ color: '#888', fontSize: '0.85em' }}>
-                  💡 La imagen se asigna automáticamente según el nombre
-                </small>
               </label>
 
               <label>

@@ -181,6 +181,13 @@ export default function Reservar() {
       {/* HEADER */}
       <header className="reservar-header">
         <div className="nav">
+          <button 
+            className="back-arrow"
+            onClick={() => navigate('/cliente')}
+            title="Volver al inicio"
+          >
+            ← 
+          </button>
           <div className="logo">CLASE V</div>
           <nav>
             <a href="/cliente">Inicio</a>
@@ -215,12 +222,25 @@ export default function Reservar() {
                       key={servicio.id}
                       className={`servicio-item ${yaSeleccionado ? "seleccionado" : ""}`}
                     >
-                      <img
-                        src={servicio.imagen || "/assets/default-service.png"}
-                        alt={servicio.nombre}
-                        className="servicio-img-small"
-                        onError={(e) => (e.currentTarget.src = "/assets/default-service.png")}
-                      />
+                      <div className="servicio-img-container">
+                        {servicio.imagen ? (
+                          <img
+                            src={servicio.imagen}
+                            alt={servicio.nombre}
+                            className="servicio-img-small"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                              e.currentTarget.nextElementSibling.style.display = 'flex';
+                            }}
+                          />
+                        ) : null}
+                        <div 
+                          className="servicio-img-placeholder"
+                          style={{display: servicio.imagen ? 'none' : 'flex'}}
+                        >
+                          <span>📸</span>
+                        </div>
+                      </div>
 
                       <div className="servicio-info">
                         <h4>{servicio.nombre}</h4>

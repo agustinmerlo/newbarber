@@ -199,12 +199,23 @@ body {
 
 /* ===== Alertas ===== */
 .alert {
-  background-color: rgba(231, 76, 60, 0.15);
-  color: #e74c3c;
   padding: 1rem;
   border-radius: 8px;
-  border-left: 4px solid #e74c3c;
   margin-bottom: 1rem;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.alert.error {
+  background-color: rgba(231, 76, 60, 0.15);
+  color: #e74c3c;
+  border-left: 4px solid #e74c3c;
+}
+
+.alert.success {
+  background-color: rgba(39, 174, 96, 0.15);
+  color: #27ae60;
+  border-left: 4px solid #27ae60;
 }
 
 /* ===== Estado vacío ===== */
@@ -260,7 +271,7 @@ body {
 }
 
 .barber-card.deleted {
-  opacity: 0.5;
+  opacity: 0.6;
   border-color: #e74c3c;
 }
 
@@ -322,6 +333,8 @@ body {
   letter-spacing: 0.5px;
 }
 
+.barber-card-email,
+.barber-card-username,
 .barber-card-specialty,
 .barber-card-schedule {
   color: var(--muted);
@@ -331,6 +344,8 @@ body {
   text-align: left;
 }
 
+.barber-card-email .label,
+.barber-card-username .label,
 .barber-card-specialty .label,
 .barber-card-schedule .label {
   color: var(--text);
@@ -405,7 +420,9 @@ body {
 }
 
 .form-grid input[type="text"],
-.form-grid input[type="email"] {
+.form-grid input[type="email"],
+.form-grid input[type="password"],
+.form-grid input {
   width: 100%;
   padding: 0.75rem;
   border-radius: 8px;
@@ -420,6 +437,18 @@ body {
   outline: none;
   border-color: var(--gold);
   box-shadow: 0 0 0 3px rgba(255, 215, 0, 0.1);
+  background-color: #2a2a2a;
+}
+
+.form-grid input::placeholder {
+  color: #666;
+}
+
+.form-grid small {
+  color: #888;
+  font-size: 0.85em;
+  margin-top: 0.25rem;
+  display: block;
 }
 
 /* ===== Upload de foto ===== */
@@ -516,6 +545,12 @@ body {
   display: none;
 }
 
+/* Etiqueta para input file */
+label[for="photo-input"] {
+  cursor: pointer;
+  text-align: center;
+}
+
 /* ===== Acciones del modal ===== */
 .modal-actions {
   display: flex;
@@ -524,6 +559,25 @@ body {
   margin-top: 2rem;
   padding-top: 1.5rem;
   border-top: 1px solid var(--border);
+}
+
+/* ===== Scrollbar del modal ===== */
+.modal::-webkit-scrollbar {
+  width: 8px;
+}
+
+.modal::-webkit-scrollbar-track {
+  background: #1a1a1a;
+  border-radius: 10px;
+}
+
+.modal::-webkit-scrollbar-thumb {
+  background: var(--gold);
+  border-radius: 10px;
+}
+
+.modal::-webkit-scrollbar-thumb:hover {
+  background: var(--gold-hover);
 }
 
 /* ===== Responsive ===== */
@@ -558,12 +612,22 @@ body {
   .modal {
     padding: 1.5rem;
     margin: 1rem;
+    max-width: 95%;
   }
 
   .photo-preview,
   .photo-placeholder {
     width: 120px;
     height: 120px;
+  }
+
+  .modal-actions {
+    flex-direction: column;
+  }
+
+  .modal-actions .btn {
+    width: 100%;
+    justify-content: center;
   }
 }
 

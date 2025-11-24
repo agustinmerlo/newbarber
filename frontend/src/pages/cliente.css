@@ -105,6 +105,22 @@
   color: #000;
 }
 
+.btn--outline {
+  background: transparent;
+  border: 2px solid #FFD700;
+  color: #FFD700;
+}
+
+.btn--outline:hover {
+  background: #FFD700;
+  color: #000;
+}
+
+.btn--outline:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .btn--lg {
   padding: 1.1rem 2.5rem;
   font-size: 1.1rem;
@@ -156,7 +172,7 @@
 
 .services__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 2rem;
   list-style: none;
   margin-bottom: 3rem;
@@ -168,6 +184,27 @@
   border: 1px solid #2a2a2a;
   transition: all 0.3s ease;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ✅ Imagen del servicio */
+.card__image {
+  width: 100%;
+  height: 200px;
+  overflow: hidden;
+  background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
+}
+
+.card__image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.4s ease;
+}
+
+.card:hover .card__image img {
+  transform: scale(1.1);
 }
 
 .card:hover {
@@ -178,11 +215,15 @@
 
 .card__body {
   padding: 2rem;
-  text-align: center;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  text-align: left;
 }
 
 .card__body h4 {
-  font-size: 1.3rem;
+  font-size: 1.4rem;
+  font-weight: 600;
   margin-bottom: 0.75rem;
   color: #fff;
 }
@@ -191,12 +232,71 @@
   color: #999;
   margin-bottom: 1.5rem;
   line-height: 1.6;
+  flex-grow: 1;
+  font-size: 0.95rem;
 }
 
-.price {
-  font-size: 1.8rem;
+/* Card footer para precio y duración */
+.card__footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: auto;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 215, 0, 0.15);
+  gap: 1rem;
+}
+
+.card .price {
+  font-size: 1.6rem;
   font-weight: 700;
   color: #FFD700;
+  white-space: nowrap;
+}
+
+.card .duration {
+  font-size: 0.85rem;
+  color: #999;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
+/* Loading states para servicios */
+.services-loading,
+.services-empty {
+  text-align: center;
+  padding: 4rem 1.5rem;
+  color: #999;
+}
+
+.services-loading .spinner,
+.barbers-loading .spinner {
+  width: 50px;
+  height: 50px;
+  border: 4px solid rgba(255, 215, 0, 0.1);
+  border-top-color: #FFD700;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 1.5rem;
+}
+
+.services-empty .empty-icon,
+.barbers-empty .empty-icon {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+  opacity: 0.3;
+}
+
+.services-loading p,
+.services-empty p {
+  font-size: 1.1rem;
+  color: #999;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .center {
@@ -204,117 +304,13 @@
   margin-top: 3rem;
 }
 
-/* ===== INFO ===== */
-.info {
-  padding: 5rem 0;
-  background-color: #0a0a0a;
-}
-
-.info__grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 3rem;
-}
-
-.info h3 {
-  font-size: 1.5rem;
-  margin-bottom: 1.5rem;
-  color: #FFD700;
-}
-
-.hours {
-  list-style: none;
-  margin-bottom: 2rem;
-}
-
-.hours li {
-  padding: 0.75rem 0;
-  border-bottom: 1px solid #2a2a2a;
-  color: #ddd;
-}
-
-.map-embed {
-  width: 100%;
-  height: 300px;
-  border-radius: 12px;
-  overflow: hidden;
-  margin-top: 1rem;
-  border: 1px solid #2a2a2a;
-}
-
-.map-embed iframe {
-  width: 100%;
-  height: 100%;
-  border: none;
-}
-
-/* ===== FOOTER ===== */
-.footer {
-  padding: 2rem 0;
-  background-color: #000;
-  border-top: 1px solid #2a2a2a;
-}
-
-.footer__grid {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 1rem;
-}
-
-.footer p {
-  color: #999;
-}
-
-.footer a {
-  color: #FFD700;
-  text-decoration: none;
-  transition: color 0.3s ease;
-}
-
-.footer a:hover {
-  color: #FFA500;
-}
-
-/* ===== RESPONSIVE ===== */
-@media (max-width: 768px) {
-  .hero__title {
-    font-size: 2.5rem;
-  }
-
-  .hero__subtitle {
-    font-size: 1rem;
-  }
-
-  .section-head h2 {
-    font-size: 2rem;
-  }
-
-  .usp__grid,
-  .services__grid {
-    grid-template-columns: 1fr;
-  }
-
-  .info__grid {
-    grid-template-columns: 1fr;
-  }
-
-  .footer__grid {
-    flex-direction: column;
-    text-align: center;
-  }
-}
-
 /* ===== SECCIÓN DE BARBEROS - VISTA CLIENTE ===== */
-
-/* Asegurar que la sección no se desborde */
 .barbers {
   width: 100%;
   max-width: 100%;
   overflow-x: hidden;
   padding: 5rem 0;
-  background-color: #000;
+  background-color: #0a0a0a;
 }
 
 .barbers .container {
@@ -334,19 +330,6 @@
   gap: 1.5rem;
 }
 
-.spinner {
-  width: 50px;
-  height: 50px;
-  border: 4px solid rgba(255, 215, 0, 0.1);
-  border-top-color: #FFD700;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
 .barbers-loading p {
   color: #999;
   font-size: 1rem;
@@ -356,12 +339,6 @@
 .barbers-empty {
   text-align: center;
   padding: 4rem 2rem;
-}
-
-.empty-icon {
-  font-size: 4rem;
-  margin-bottom: 1rem;
-  opacity: 0.3;
 }
 
 .barbers-empty p {
@@ -479,8 +456,154 @@
   color: #FFD700;
 }
 
-/* Responsive para barberos */
+/* ===== INFO ===== */
+.info {
+  padding: 5rem 0;
+  background-color: #000;
+}
+
+.info__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 3rem;
+}
+
+.info h3 {
+  font-size: 1.5rem;
+  margin-bottom: 1.5rem;
+  color: #FFD700;
+}
+
+.hours {
+  list-style: none;
+  margin-bottom: 2rem;
+}
+
+.hours li {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #2a2a2a;
+  color: #ddd;
+}
+
+.map-embed {
+  width: 100%;
+  height: 300px;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-top: 1rem;
+  border: 1px solid #2a2a2a;
+}
+
+.map-embed iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+/* ===== FOOTER ===== */
+.footer {
+  padding: 2rem 0;
+  background-color: #0a0a0a;
+  border-top: 1px solid #2a2a2a;
+}
+
+.footer__grid {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.footer p {
+  color: #999;
+}
+
+.footer-links {
+  display: flex;
+  gap: 2rem;
+  align-items: center;
+}
+
+.footer-link-btn {
+  background: none;
+  border: none;
+  color: #FFD700;
+  cursor: pointer;
+  font-size: 1rem;
+  font-family: inherit;
+  transition: color 0.3s ease;
+  padding: 0;
+}
+
+.footer-link-btn:hover {
+  color: #FFA500;
+}
+
+.footer-link-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.footer a {
+  color: #FFD700;
+  text-decoration: none;
+  transition: color 0.3s ease;
+}
+
+.footer a:hover {
+  color: #FFA500;
+}
+
+/* ===== RESPONSIVE ===== */
 @media (max-width: 768px) {
+  .hero__title {
+    font-size: 2.5rem;
+  }
+
+  .hero__subtitle {
+    font-size: 1rem;
+  }
+
+  .hero__cta {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .section-head h2 {
+    font-size: 2rem;
+  }
+
+  .usp__grid,
+  .services__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .card__footer {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .card .price {
+    font-size: 1.4rem;
+  }
+
+  .info__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .footer__grid {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .footer-links {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  /* Barberos responsive */
   .barbers__grid {
     grid-template-columns: 1fr;
     gap: 1.5rem;
@@ -514,6 +637,10 @@
   .barber-image-wrapper {
     height: 190px;
   }
+
+  .services__grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 @media (min-width: 1025px) {
@@ -526,5 +653,9 @@
   
   .barber-image-wrapper {
     height: 200px;
+  }
+
+  .services__grid {
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   }
 }
